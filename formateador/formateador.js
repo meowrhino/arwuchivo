@@ -1,3 +1,5 @@
+import { colorToHex } from "../js/colors.js";
+
 /**
  * Formateador minimal:
  * - Cargar index.json / leyenda.json / un day-file opcional
@@ -69,18 +71,21 @@ function boot() {
 
   els.addPerson.addEventListener("click", () => {
     const name = (els.personName.value || "").trim();
-    const color = (els.personColor.value || "").trim();
+    const colorRaw = (els.personColor.value || "").trim();
 
     if (!name) return;
 
     // Si este bloque es "persona a la leyenda", lo normal es meter un color.
     // Si no meten color, dejamos la entrada igualmente (por si queréis “reservar” el nombre).
-    if (color && !/^#([0-9a-fA-F]{6})$/.test(color)) {
-      alert("Color inválido. Usa formato #RRGGBB.");
+    const normalizedColor = colorRaw ? colorToHex(colorRaw) : "";
+    if (colorRaw && !normalizedColor) {
+      alert("Color invalido. Usa #RRGGBB o un nombre CSS (p.ej. Gold).");
       return;
     }
 
-    state.leyenda.people[name] = color ? { color } : state.leyenda.people[name] || {};
+    state.leyenda.people[name] = normalizedColor
+      ? { color: normalizedColor }
+      : state.leyenda.people[name] || {};
     refreshUI();
   });
 
