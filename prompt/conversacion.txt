@@ -1,43 +1,85 @@
-CONVERSACIÓN / NOTAS DE DISEÑO — arwuchivo
 
-- Objetivo: web estática (HTML/CSS/JS) para archivar vídeos de kung fu con navegación por mes y día.
-- Vistas:
-  - Vista mes: al entrar, mes actual; muestra todos los vídeos del mes.
-  - Vista día: muestra solo los vídeos del día.
-- Navegación:
-  - index.html?m=YY-MM
-  - index.html?d=YY-MM-DD
-  - Si no hay params -> mes actual (YY del dispositivo).
-- Años:
-  - Se usa opción B: 2 dígitos (YY). 2002 y 2102 colisionan a propósito (“juego”).
-  - Comentarlo en el código con tono natural. (Idea futura: marcar siglos por color o etiqueta si hiciera falta).
-- Datos (arquitectura escalable):
-  - data/index.json: índice ligero con días, gente y nº de items.
-  - data/days/YY-MM-DD.json: detalle completo de un día.
-  - data/leyenda.json: colores oficiales por persona.
-  - data/notaDeCurt.json: texto + nota para cambiar estilo claro/oscuro.
-- Timeline:
-  - Siempre visible con divisiones del mes (28–31 puntos).
-  - Días sin contenido: punto gris, no clickable.
-  - Días con contenido: clickable.
-  - Color del punto: promedio RGB de las personas del día (equilibrado por personas, no por nº de vídeos).
-    - “Regla de 3” real en código: si hay N personas, cada una aporta 100/N %.
-- Layout:
-  - Header: 5dvh (fecha centrada; click abre selector de mes).
-  - Grid: 85dvh (cards llenan el área).
-  - Bottom: 10dvh (timeline 80% de esa barra, leyenda 20%).
-- Grid:
-  - Debe “llenar” el fondo.
-  - Decide divisiones mirando si el contenedor es más ancho o más alto.
-  - Usa un cálculo visible y simple (explicado como regla de 3 / proporción) para que cols/rows se aproxime a width/height.
-- Password:
-  - UX con modal propio (no prompt()).
-  - Hackeable a propósito: password visible en DOM (data-password o span.password).
-- Vídeos:
-  - Preferiblemente WebM.
-  - Conversión prevista con la herramienta interna “videoToWeb” (ffmpeg wasm). Dejar tareas en TODO.md.
-- Nuevo requisito:
-  - Crear un “formateador” súper simple (otra página) para:
-    - añadir personas a leyenda.json
-    - añadir vídeos a un día y actualizar index.json + day-file
-  - En navegador no se escribe directo en disco (salvo APIs modernas): se carga JSON con file inputs y se descargan JSONs actualizados.
+
+holaa la pagina de arwuchivo peta, puedes leer en su carpeta de PROMPT el propmpt pero por si acaso t elo vuelvo a pasar pro aqui los distintos mensajes con los que estuvimos trabajando con CAHTPGT, la estetica ha de ser sencilla muy en la linea de imgToWeb, aunque puede ser mas divertiuda debido al funcioonamiento de colores
+
+ayudame con este prompt voy a hacer una web para que podamos acceder a un archivo de los vídeos que nos vayamos grabando para kung fu, que al acceder a ella te salga el mes en el que estás con una línea temporal con enlaces a los días que tengan contenido, que estarán en un home.json
+
+la página a la que llegas muestras los vídeos que están subidos ese mes, y en la línea temporal inferior están todos los días que se ha subido contenido para poder acceder sólo a los de ese día:
+
+hay 2 tipos de home, "la de día" y "la de mes"
+
+cuando accedes accedes a la de ese mes, 
+
+la pagina se compone de, arriba la fecha que dice el mes y el año si estas en una de mes, y dice el dia, mes y año si estas en la de un dia. esta fecha si la clicas te sale n unseelctor de mes que te lleva a una de mes
+
+y en la de mes es donde puedes eelegir el día: si ningun dia de ese mes tiene nada no muestra nada, 
+
+si estas en febrero del 25 (solo se muestra las ultimas 2 cifras, asi que realmente podría ser que solo almacene la fecha con esas 2 fechas, el 2002 y el 2102 son el mismo año, solo hay 100 años)
+
+como sev en las cosas?
+
+en el caso de febrero se verían 2 miniaturas de un video con un borde de color y el texto que hay abajo dice el titulo y la fecha
+
+y solo si hay contenido, abajo se carga una leyenda que dice de quien es cada color, pro solo se cargan aquellos nombres que se vean representados
+
+la leyenda está en un home.json, 
+
+la estructura me gustaria que fuese que el home.json contiene TODAS las fechas de las que hay registro, con un array con entrada que tiene el nombre de ese dia y objetos, los objetos son las perosnas que han subido video (que luego en el leyenda.json contiene sus colores, si no, elegirá un color random entre estos (los colores de html_colros que son las palabras hardcodeadas https://es.wikipedia.org/wiki/Colores_web que vienenaqui en la tabla de colores)
+
+hay algo que veas raro? o algo qeu se deba estudiar?
+
+Te comento cosas:
+
+la linea temporal puede ser un .js aparte si quieres, puedes atomizar como quieras el codigo pero que este pro secciones e incluso ligeramente comentado para tener una idea de como funciona cada cosa y explicar temas de codigo que no sean convencionales con un tono natural (como lo de los años que son solo 2 digitos y 2100 y 2000 comparten numero de indice, y que es algo que se podria saldar marcandolo con colores en la leyenda si es algo que requiriese (compo un color para manu 20XX y otro para manu 21XX)
+
+y a nivel de interfaz es sencillisima, 4 items, arriba centrada la fecha, en el centro, coordenadas vacías si no hay items en el dia del mes en el que se acceda a la web
+
+abajo la linea temporal que si no hay nada igualmente tiene las divisiones preparadas 
+
+(no se si seria mejor que solo si hay items se activen estas 2 funciones, no? igual mas facil, si no hay items la de las coordenadas no hace anda y la de la linea saca la linea vacía y yta)
+
+abajo una linea temporal donde se verian puntos 
+
+si solo hay 1 persona que subio contenido, lo pone de ese color
+si hay 2 o más, mezcla los colores para conseguir el color "intermedio" 
+
+esto es otra funcion aparte que puedes añadir
+
+
+
+entonces en home estaria bien que hubiese solo las entradas de cada archivo 
+
+
+me parece bien, osea, habrá una interfaz que llamaremos "formateador" (en honor a otros proyectos como el de safeamorx, solo que tiene que ser muchísimo más sencilla, para poder añadir:
+
+personas a la leyenda
+vídeos a la timeline
+
+¿cómo recomiendas hacerlo? igual cuando la abres en el liveserver le clicas el archivo, le seleccionas la persona y el día que se ha registrado, y que genere las y json's necesarios y los ajutes que necesiute en la nuiev a Arquitectura escalable y simple:
+	•	data/index.json: lista de días disponibles + metadatos mínimos (quiénes aparecen, nº items, etc.)
+	•	data/days/2025-02-14.json: los items completos de ese día
+	•	leyenda.json y notaDeCurt.json aparte que comentabas
+
+
+en el 1 los años a 2 digitos, estamos juigando con la opcion B
+
+los colores si, haz un promedio rgb, y siempre es contado por personas, si hay 3 personas es 33% cada uno, si es 4 es 25, si es 1 es 100 y si es 2 es 50 cada una, puedes hacer reglas de 3 y que estas equivalencias no esten hardcodeadas sino que haga las mates calculando al cargar cada dia de ese mes cuantos numeros de persona hay en ese mes y hace las reglas de 3, que el codigo se vea el proceso y sea sencillo, me encantaria que cargase con reglas de 3 de verdad
+
+los videos creo que los subiremos como webM, los cargaremos con esta web de videoToWeb, ¿podrias revisar un poco como esta el tema de la conversion y tal? o poner eso en un TODO,.md dentro de este proyecto de archivos de vidfeos que ya tiene nombre!!!
+
+arwuchivo!!!
+
+6 vale si que tenga mejor ux (y es hackeable mediante desarrolaldor web de ese video no? o sea al generar un item con password que tenga una clase que se llame "password" y esté ahí escrita)
+
+la grid /lista de cartas que ocupen todo el espacio del fondo eh 
+
+o sea los 5dvh primeros son para la fecha
+
+los 10dvh ultimos son para la linea temporal y para la leyenda. la linea temporal ocupara un 80% de su espacio y la leyenda probemos con un 20%
+
+
+
+entonces los 85dvh que se quedan libres se ocupan con esta grid, que mira si es mas ancha que alta o viceversa, y toma el lado mas "grande" para generar las divisiones en ese lado, y las calcula y tla con reglas de 3
+
+
+te he respondido a todo? me revisas el propmpt y reenvias? puedes añadir todas las notas de este proceso a un archivo llamado "conversacion.txt" en la carpeta "prompt" y me lo envias todo como un zip con el nombre "arwuchivo"

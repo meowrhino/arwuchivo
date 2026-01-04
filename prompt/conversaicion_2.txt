@@ -1,0 +1,44 @@
+CONVERSACIÓN / NOTAS DE DISEÑO — arwuchivo
+
+- Objetivo: web estática (HTML/CSS/JS) para archivar vídeos de kung fu con navegación por mes y día.
+- Vistas:
+  - Vista mes: al entrar, mes actual; muestra todos los vídeos del mes.
+  - Vista día: muestra solo los vídeos del día.
+- Navegación:
+  - index.html?m=YY-MM
+  - index.html?d=YY-MM-DD
+  - Si no hay params -> mes actual (YY del dispositivo).
+- Años:
+  - Se usa opción B: 2 dígitos (YY). 2002 y 2102 colisionan a propósito (“juego”).
+  - Comentarlo en el código con tono natural. (Idea futura: marcar siglos por color o etiqueta si hiciera falta).
+- Datos (arquitectura escalable):
+  - data/index.json: índice ligero con días, gente y nº de items.
+  - data/days/YY-MM-DD.json: detalle completo de un día.
+  - data/leyenda.json: colores oficiales por persona.
+  - data/notaDeCurt.json: texto + nota para cambiar estilo claro/oscuro.
+- Timeline:
+  - Siempre visible con divisiones del mes (28–31 puntos).
+  - Días sin contenido: punto gris, no clickable.
+  - Días con contenido: clickable.
+  - Color del punto: promedio RGB de las personas del día (equilibrado por personas, no por nº de vídeos).
+    - “Regla de 3” real en código: si hay N personas, cada una aporta 100/N %.
+- Layout:
+  - Header: 5dvh (fecha centrada; click abre selector de mes).
+  - Grid: 85dvh (cards llenan el área).
+  - Bottom: 10dvh (timeline 80% de esa barra, leyenda 20%).
+- Grid:
+  - Debe “llenar” el fondo.
+  - Decide divisiones mirando si el contenedor es más ancho o más alto.
+  - Usa un cálculo visible y simple (explicado como regla de 3 / proporción) para que cols/rows se aproxime a width/height.
+- Password:
+  - UX con modal propio (no prompt()).
+  - Hackeable a propósito: password visible en DOM (data-password o span.password).
+- Vídeos:
+  - Preferiblemente WebM.
+  - Conversión prevista con la herramienta interna “videoToWeb” (ffmpeg wasm). Dejar tareas en TODO.md.
+- Nuevo requisito:
+  - Crear un “formateador” súper simple (otra página) para:
+    - añadir personas a leyenda.json
+    - añadir vídeos a un día y actualizar index.json + day-file
+  - En navegador no se escribe directo en disco (salvo APIs modernas): se carga JSON con file inputs y se descargan JSONs actualizados.
+
