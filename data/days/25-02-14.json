@@ -1,0 +1,19 @@
+{
+  "d": "25-02-14",
+  "items": [
+    {
+      "id": "25-02-14-manu-01",
+      "title": "Bloqueo + contra (lento)",
+      "person": "Manu",
+      "src": "videos/25/02/14/manu__01.webm",
+      "thumb": "thumbs/25/02/14/manu__01.jpg"
+    },
+    {
+      "id": "25-02-14-berta-01",
+      "title": "Patada lateral + combo",
+      "person": "Berta",
+      "src": "videos/25/02/14/berta__01.webm",
+      "password": "tiger"
+    }
+  ]
+}

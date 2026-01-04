@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>arwuchivo</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <button id="dateBtn" class="date-btn" type="button" aria-label="Cambiar mes"></button>
+    <input id="monthPicker" class="month-picker" type="month" />
+  </header>
+
+  <main class="stage">
+    <section class="note" id="note" hidden></section>
+    <section class="grid" id="grid" aria-live="polite"></section>
+    <section class="empty" id="empty" hidden>No hay vídeos aquí (todavía).</section>
+  </main>
+
+  <footer class="bottombar">
+    <div class="timeline-wrap">
+      <div id="timeline" class="timeline" aria-label="Línea temporal del mes"></div>
+    </div>
+    <div class="legend-wrap">
+      <div id="legend" class="legend" aria-label="Leyenda de personas"></div>
+    </div>
+  </footer>
+
+  <div id="overlay" class="overlay" hidden>
+    <div class="overlay-inner" role="dialog" aria-modal="true">
+      <button id="overlayClose" class="overlay-close" type="button" aria-label="Cerrar">×</button>
+      <div id="overlayBody"></div>
+    </div>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

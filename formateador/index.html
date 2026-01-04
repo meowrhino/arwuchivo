@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>arwuchivo — formateador</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="top">
+    <h1>Formateador — arwuchivo</h1>
+    <p>Editor mínimo para generar/actualizar <code>index.json</code>, <code>leyenda.json</code> y los day-files.</p>
+  </header>
+
+  <main class="wrap">
+    <section class="card">
+      <h2>1) Cargar JSONs (opcional)</h2>
+      <div class="row">
+        <label>index.json <input id="fileIndex" type="file" accept="application/json" /></label>
+        <label>leyenda.json <input id="fileLeyenda" type="file" accept="application/json" /></label>
+        <label>día (YY-MM-DD).json <input id="fileDay" type="file" accept="application/json" /></label>
+      </div>
+      <div class="hint">Si no cargas nada, el formateador empieza con estructuras vacías.</div>
+    </section>
+
+    <section class="card">
+      <h2>2) Añadir persona a leyenda (color oficial)</h2>
+      <div class="row">
+        <input id="personName" placeholder="Nombre (p.ej. Manu)" />
+        <input id="personColor" placeholder="#RRGGBB (p.ej. #32CD32)" />
+        <button id="addPerson" class="btn primary" type="button">Añadir / actualizar</button>
+      </div>
+      <div id="peoplePreview" class="preview"></div>
+    </section>
+
+    <section class="card">
+      <h2>3) Añadir vídeo</h2>
+      <div class="grid2">
+        <label>Fecha (YY-MM-DD) <input id="vDate" placeholder="25-02-14" /></label>
+        <label>Persona <select id="vPerson"></select></label>
+        <label id="vPersonCustomLabel">Nombre (auto) <input id="vPersonCustom" placeholder="p.ej. Trufa" hidden /></label>
+        <label>Título <input id="vTitle" placeholder="Combo..." /></label>
+        <label>src (.webm) <input id="vSrc" placeholder="videos/25/02/14/manu__01.webm" /></label>
+        <label>thumb (opcional) <input id="vThumb" placeholder="thumbs/25/02/14/manu__01.jpg" /></label>
+        <label>password (opcional) <input id="vPw" placeholder="tiger" /></label>
+      </div>
+      <div class="row">
+        <button id="addVideo" class="btn primary" type="button">Añadir al día</button>
+      </div>
+      <div id="dayPreview" class="preview"></div>
+    </section>
+
+    <section class="card">
+      <h2>4) Descargar</h2>
+      <div class="row">
+        <button id="dlIndex" class="btn" type="button">Descargar index.json</button>
+        <button id="dlLeyenda" class="btn" type="button">Descargar leyenda.json</button>
+        <button id="dlDay" class="btn" type="button">Descargar día actual</button>
+      </div>
+      <p class="hint">Luego reemplaza los ficheros en <code>data/</code> y <code>data/days/</code> dentro del proyecto.</p>
+    </section>
+
+    <section class="card subtle">
+      <h2>Nota</h2>
+      <p>
+        Este editor no “escribe” directamente en tu disco (por compatibilidad). Descarga los JSONs y sustitúyelos.
+        Es suficiente para el flujo Live Server.
+      </p>
+    </section>
+  </main>
+
+  <script type="module" src="formateador.js"></script>
+</body>
+</html>
