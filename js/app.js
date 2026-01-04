@@ -3,6 +3,7 @@ import { resolvePersonColor } from "./colors.js";
 import { renderTimeline } from "./timeline.js";
 import { setupOverlay } from "./ui.js";
 import { computeGrid } from "./grid.js";
+import { setupMonthPicker } from "./monthPicker.js";
 
 const dateBtn = document.getElementById("dateBtn");
 const monthPicker = document.getElementById("monthPicker");
@@ -28,19 +29,6 @@ async function init() {
   // Header label
   dateBtn.textContent = day ? formatDayLabel(day) : formatMonthLabel(month);
 
-  // month picker: usa YYYY-MM, convertimos a YY-MM (últimas 2 cifras)
-  dateBtn.addEventListener("click", () => {
-    monthPicker.value = toYYYYMM(month);
-    monthPicker.click();
-  });
-
-  monthPicker.addEventListener("change", () => {
-    if (!monthPicker.value) return;
-    const [yyyy, mm] = monthPicker.value.split("-");
-    const yy = yyyy.slice(-2);
-    location.href = `index.html?m=${yy}-${mm}`;
-  });
-
   const [index, leyenda, nota] = await Promise.all([
     fetchJSON("data/index.json"),
     fetchJSON("data/leyenda.json"),
@@ -49,6 +37,17 @@ async function init() {
 
   const legendPeopleMap = leyenda?.people || {};
   const indexDays = Array.isArray(index?.days) ? index.days : [];
+
+  // Setup month picker
+  const picker = setupMonthPicker({
+    indexDays,
+    currentMonth: month,
+    onSelectMonth: (m) => location.href = `index.html?m=${m}`
+  });
+
+  dateBtn.addEventListener("click", () => {
+    picker.open();
+  });
 
   // Render timeline (siempre)
   const timelineEl = document.getElementById("timeline");
@@ -242,8 +241,4 @@ function legendBlock(title, rows) {
   return block;
 }
 
-function toYYYYMM(yyMM) {
-  const [yy, mm] = yyMM.split("-");
-  // Solo para rellenar el <input type="month">: asumimos 20YY como año real.
-  return `20${yy}-${mm}`;
-}
+
