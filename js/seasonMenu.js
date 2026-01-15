@@ -61,58 +61,89 @@ export function groupMonthsBySeason(monthsWithContent) {
 }
 
 /**
- * Renderiza el menú de estaciones
+ * Genera lista de todos los meses en un rango
  * @param {Array} monthsWithContent - Array de strings "YY-MM" que tienen contenido
- * @param {string} currentMonth - Mes actual "YY-MM"
- * @param {Function} onSeasonClick - Callback al hacer click en una estación
- * @returns {string} - HTML del menú
+ * @returns {Array} Array de todos los meses en orden descendente
  */
-export function renderSeasonMenu(monthsWithContent, currentMonth, onSeasonClick) {
-  const grouped = groupMonthsBySeason(monthsWithContent);
-  const years = Object.keys(grouped).sort((a, b) => b - a); // Orden descendente
-
-  let html = '';
-
-  for (const year of years) {
-    const seasons = grouped[year];
-    
-    html += `<div class="season-year">`;
-    html += `<div class="season-year-title">${year}</div>`;
-    html += `<div class="season-list">`;
-
-    // Orden de estaciones: invierno, primavera, verano, otoño
-    const seasonOrder = ['winter', 'spring', 'summer', 'fall'];
-    
-    for (const season of seasonOrder) {
-      const months = seasons[season];
-      
-      if (months.length === 0) continue; // Saltar estaciones sin contenido
-
-      const hasContent = months.length > 0;
-      const isCurrent = months.includes(currentMonth);
-      
-      const classes = [
-        'season-item',
-        hasContent ? 'has-content' : '',
-        isCurrent ? 'is-current' : ''
-      ].filter(Boolean).join(' ');
-
-      const seasonName = SEASON_NAMES[season];
-      const firstMonth = months[0]; // Usar el primer mes de la estación para navegación
-
-      html += `<button 
-        class="${classes}" 
-        data-month="${firstMonth}"
-        data-season="${season}"
-        data-year="${year}">
-        ${seasonName}
-      </button>`;
+function generateAllMonths(monthsWithContent) {
+  if (monthsWithContent.length === 0) {
+    // Si no hay contenido, generar últimos 24 meses
+    const now = new Date();
+    const months = [];
+    for (let i = 0; i < 24; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const yy = String(d.getFullYear() % 100).padStart(2, '0');
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      months.push(`${yy}-${mm}`);
     }
-
-    html += `</div>`;
-    html += `</div>`;
+    return months;
   }
 
+  // Encontrar rango de meses con contenido
+  const sorted = [...monthsWithContent].sort();
+  const oldest = sorted[0];
+  const newest = sorted[sorted.length - 1];
+
+  // Parsear fechas
+  const [oldYY, oldMM] = oldest.split('-').map(Number);
+  const [newYY, newMM] = newest.split('-').map(Number);
+
+  const oldDate = new Date(2000 + oldYY, oldMM - 1, 1);
+  const newDate = new Date(2000 + newYY, newMM - 1, 1);
+
+  // Generar todos los meses en el rango
+  const allMonths = [];
+  const current = new Date(newDate);
+
+  while (current >= oldDate) {
+    const yy = String(current.getFullYear() % 100).padStart(2, '0');
+    const mm = String(current.getMonth() + 1).padStart(2, '0');
+    allMonths.push(`${yy}-${mm}`);
+    current.setMonth(current.getMonth() - 1);
+  }
+
+  return allMonths;
+}
+
+/**
+ * Renderiza el menú de meses (todos, destacando los llenos)
+ * @param {Array} monthsWithContent - Array de strings "YY-MM" que tienen contenido
+ * @param {string} currentMonth - Mes actual "YY-MM"
+ * @param {Function} onMonthClick - Callback al hacer click en un mes
+ * @returns {string} - HTML del menú
+ */
+export function renderSeasonMenu(monthsWithContent, currentMonth, onMonthClick) {
+  const allMonths = generateAllMonths(monthsWithContent);
+  const monthsSet = new Set(monthsWithContent);
+
+  const monthNames = [
+    'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+    'jul', 'ago', 'sep', 'oct', 'nov', 'dic'
+  ];
+
+  let html = '<div class="month-grid">';
+
+  for (const monthStr of allMonths) {
+    const [yy, mm] = monthStr.split('-').map(Number);
+    const monthName = monthNames[mm - 1];
+    const hasContent = monthsSet.has(monthStr);
+    const isCurrent = monthStr === currentMonth;
+
+    const classes = [
+      'month-item',
+      hasContent ? 'has-content' : '',
+      isCurrent ? 'is-current' : ''
+    ].filter(Boolean).join(' ');
+
+    html += `<button 
+      class="${classes}" 
+      data-month="${monthStr}">
+      <span class="month-name">${monthName}</span>
+      <span class="month-year">'${String(yy).padStart(2, '0')}</span>
+    </button>`;
+  }
+
+  html += '</div>';
   return html;
 }
 
@@ -151,9 +182,9 @@ export function initSeasonMenu({ monthsWithContent, currentMonth, onSeasonClick 
     }
   });
 
-  // Click en estaciones
+  // Click en meses
   contentEl.addEventListener('click', (e) => {
-    const btn = e.target.closest('.season-item');
+    const btn = e.target.closest('.month-item');
     if (!btn) return;
 
     const month = btn.dataset.month;

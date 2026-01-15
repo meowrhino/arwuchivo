@@ -2,6 +2,13 @@
   "version": 1,
   "days": [
     {
+      "d": "26-01-15",
+      "people": [
+        "Manu"
+      ],
+      "count": 2
+    },
+    {
       "d": "25-02-14",
       "people": [
         "Manu",

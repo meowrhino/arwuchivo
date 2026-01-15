@@ -13,13 +13,13 @@
  */
 export function generateRandomLayout(count, containerSize, videoSize) {
   const positions = [];
-  const padding = 16; // Espacio mínimo entre videos
-  const maxAttempts = 100; // Intentos máximos para colocar cada video
+  const padding = 0; // Sin padding, permitir solapamiento
+  const maxAttempts = 10; // Menos intentos, posicionamiento más libre
 
-  // Tamaños aleatorios para cada video (variación ±20%)
+  // Tamaños aleatorios para cada video (variación ±30% para más diversidad)
   const sizes = Array.from({ length: count }, () => ({
-    width: videoSize.width * (0.8 + Math.random() * 0.4),
-    height: videoSize.height * (0.8 + Math.random() * 0.4)
+    width: videoSize.width * (0.7 + Math.random() * 0.6),
+    height: videoSize.height * (0.7 + Math.random() * 0.6)
   }));
 
   for (let i = 0; i < count; i++) {
@@ -92,10 +92,11 @@ export function calculateAverageVideoSize(items, containerSize) {
   // Tamaños base según orientación
   const mobileWidth = containerSize.width;
   
-  // Vertical: 40% del ancho del canvas
-  // Horizontal: 60% del ancho del canvas
-  const verticalWidth = mobileWidth * 0.4;
-  const horizontalWidth = mobileWidth * 0.6;
+  // Videos pequeños: máximo 10% del ancho del canvas
+  // Tanto vertical como horizontal
+  const maxWidth = mobileWidth * 0.10;
+  const verticalWidth = maxWidth;
+  const horizontalWidth = maxWidth;
   
   // Aspect ratios comunes
   const verticalAspect = 9 / 16; // Vertical (ej: 1080x1920)
@@ -118,14 +119,12 @@ export function calculateAverageVideoSize(items, containerSize) {
 }
 
 /**
- * Calcula la altura mínima del canvas para contener todos los videos
+ * Calcula la altura del canvas (sin scroll, altura fija)
  * @param {Array} positions - Array de posiciones { x, y, width, height }
- * @param {number} minHeight - Altura mínima del canvas
+ * @param {number} viewportHeight - Altura del viewport
  * @returns {number}
  */
-export function calculateCanvasHeight(positions, minHeight) {
-  if (positions.length === 0) return minHeight;
-  
-  const maxY = Math.max(...positions.map(p => p.y + p.height));
-  return Math.max(maxY + 100, minHeight); // +100px de padding inferior
+export function calculateCanvasHeight(positions, viewportHeight) {
+  // Sin scroll: altura fija igual al viewport
+  return viewportHeight;
 }

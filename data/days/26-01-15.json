@@ -1,0 +1,21 @@
+{
+  "d": "26-01-15",
+  "items": [
+    {
+      "id": "manu__01",
+      "src": "videos/26/01/15/manu__01.mp4",
+      "thumb": null,
+      "title": "Entrenamiento 1",
+      "person": ["Manu"],
+      "password": null
+    },
+    {
+      "id": "manu__02",
+      "src": "videos/26/01/15/manu__02.mp4",
+      "thumb": null,
+      "title": "Entrenamiento 2",
+      "person": ["Manu"],
+      "password": null
+    }
+  ]
+}
