@@ -1,44 +1,119 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>arwuchivo</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <header class="topbar">
-    <button id="dateBtn" class="date-btn" type="button" aria-label="Cambiar mes"></button>
-    <input id="monthPicker" class="month-picker" type="month" />
+  <!-- Header: Mes/Año centrado -->
+  <header class="header">
+    <button id="dateBtn" class="date-btn" type="button" aria-label="Cambiar mes/estación"></button>
   </header>
 
-  <main class="stage">
-    <section class="note" id="note" hidden></section>
-    <section class="grid" id="grid" aria-live="polite"></section>
-    <section class="empty" id="empty" hidden>No hay vídeos aquí (todavía).</section>
+  <!-- Canvas: Espacio completo para videos -->
+  <main class="canvas" id="canvas">
+    <div class="empty" id="empty" hidden>no hay videos aquí (todavía)</div>
   </main>
 
-  <footer class="bottombar">
-    <div class="timeline-wrap">
-      <div id="timeline" class="timeline" aria-label="Línea temporal del mes"></div>
-    </div>
-    <div class="legend-wrap">
-      <div id="legend" class="legend" aria-label="Leyenda de personas"></div>
-    </div>
-  </footer>
+  <!-- Leyenda: Pequeñita abajo derecha -->
+  <div class="legend" id="legend" aria-label="Leyenda de personas"></div>
 
-  <div id="overlay" class="overlay" hidden>
-    <div class="overlay-inner" role="dialog" aria-modal="true">
-      <button id="overlayClose" class="overlay-close" type="button" aria-label="Cerrar">×</button>
-      <div id="overlayBody"></div>
+  <!-- Botón de subida: Flotante abajo izquierda -->
+  <button id="uploadBtn" class="upload-btn" type="button" aria-label="Subir video">+</button>
+
+  <!-- Menú de estaciones -->
+  <div id="seasonMenu" class="season-menu" hidden>
+    <div class="season-menu-inner">
+      <button id="seasonMenuClose" class="season-menu-close" type="button" aria-label="Cerrar">×</button>
+      <div id="seasonMenuContent" class="season-menu-content"></div>
     </div>
   </div>
 
-  <div id="monthPickerOverlay" class="month-picker-overlay" hidden>
-    <div class="month-picker-inner" role="dialog" aria-modal="true">
-      <button id="monthPickerClose" class="month-picker-close" type="button" aria-label="Cerrar">×</button>
-      <h2 class="month-picker-title">selecciona un mes</h2>
-      <div id="monthPickerGrid" class="month-picker-grid"></div>
+  <!-- Overlay de video fullscreen -->
+  <div id="videoOverlay" class="video-overlay" hidden>
+    <button id="videoOverlayClose" class="video-overlay-close" type="button" aria-label="Cerrar">×</button>
+    <div id="videoOverlayBody" class="video-overlay-body"></div>
+  </div>
+
+  <!-- Modal de password -->
+  <div id="passwordOverlay" class="password-overlay" hidden>
+    <div class="password-overlay-inner">
+      <button id="passwordOverlayClose" class="password-overlay-close" type="button" aria-label="Cerrar">×</button>
+      <div class="password-form">
+        <label for="passwordInput">password</label>
+        <input id="passwordInput" type="password" placeholder="..." />
+        <div class="password-actions">
+          <button id="passwordCancel" type="button">cancelar</button>
+          <button id="passwordSubmit" type="button" class="primary">entrar</button>
+        </div>
+        <div id="passwordError" class="password-error" hidden></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de subida -->
+  <div id="uploadOverlay" class="upload-overlay" hidden>
+    <div class="upload-overlay-inner">
+      <button id="uploadOverlayClose" class="upload-overlay-close" type="button" aria-label="Cerrar">×</button>
+      <h2>subir video</h2>
+      <form id="uploadForm" class="upload-form">
+        <div class="form-field">
+          <label for="uploadVideo">video</label>
+          <input id="uploadVideo" type="file" accept="video/*" required />
+        </div>
+        
+        <div class="form-field">
+          <label for="uploadTitle">título</label>
+          <input id="uploadTitle" type="text" placeholder="ej: bloqueo + contra" />
+        </div>
+        
+        <div class="form-field">
+          <label for="uploadDate">fecha</label>
+          <input id="uploadDate" type="date" required />
+        </div>
+        
+        <div class="form-field">
+          <label>persona(s)</label>
+          <div id="uploadPeople" class="upload-people"></div>
+          <button id="addPersonBtn" type="button" class="add-person-btn">+ añadir persona</button>
+        </div>
+        
+        <div class="form-field">
+          <label for="uploadPassword">password (opcional)</label>
+          <input id="uploadPassword" type="text" placeholder="dejar vacío si es público" />
+        </div>
+        
+        <div class="form-actions">
+          <button type="button" id="uploadCancel">cancelar</button>
+          <button type="submit" class="primary">subir</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal de nueva persona -->
+  <div id="newPersonOverlay" class="new-person-overlay" hidden>
+    <div class="new-person-overlay-inner">
+      <button id="newPersonOverlayClose" class="new-person-overlay-close" type="button" aria-label="Cerrar">×</button>
+      <h3>nueva persona</h3>
+      <form id="newPersonForm" class="new-person-form">
+        <div class="form-field">
+          <label for="newPersonName">nombre</label>
+          <input id="newPersonName" type="text" placeholder="ej: manu" required />
+        </div>
+        
+        <div class="form-field">
+          <label for="newPersonColor">color</label>
+          <input id="newPersonColor" type="color" value="#ffd700" required />
+        </div>
+        
+        <div class="form-actions">
+          <button type="button" id="newPersonCancel">cancelar</button>
+          <button type="submit" class="primary">guardar</button>
+        </div>
+      </form>
     </div>
   </div>
 

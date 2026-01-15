@@ -1,3 +1,45 @@
+/**
+ * Carga el archivo index.json
+ */
+export async function loadIndex() {
+  const data = await fetchJSON('data/index.json');
+  return {
+    months: Array.isArray(data?.days) ? data.days.map(d => d.d.slice(0, 5)) : [],
+    days: Array.isArray(data?.days) ? data.days : []
+  };
+}
+
+/**
+ * Carga los datos de un mes específico
+ */
+export async function loadDayData(monthStr) {
+  const index = await fetchJSON('data/index.json');
+  const days = Array.isArray(index?.days) 
+    ? index.days.filter(d => d.d.startsWith(monthStr))
+    : [];
+  
+  const dayData = await Promise.allSettled(
+    days.map(d => fetchJSON(`data/days/${d.d}.json`))
+  );
+  
+  return dayData
+    .filter(r => r.status === 'fulfilled')
+    .map(r => r.value)
+    .filter(Boolean);
+}
+
+/**
+ * Carga el archivo leyenda.json
+ */
+export async function loadLegend() {
+  try {
+    return await fetchJSON('data/leyenda.json');
+  } catch (error) {
+    console.warn('No se pudo cargar leyenda.json:', error);
+    return { people: {} };
+  }
+}
+
 export async function fetchJSON(path) {
   const res = await fetch(path, { cache: "no-store" });
   if (!res.ok) throw new Error(`Fetch failed: ${path} (${res.status})`);

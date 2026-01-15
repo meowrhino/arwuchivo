@@ -173,13 +173,43 @@ export const AUTO_PALETTE = Object.values(HTML_COLOR_HEX);
 const COLOR_CACHE = new Map();
 let colorCtx = null;
 
-export function resolvePersonColor(name, legendPeopleMap) {
-  const official = legendPeopleMap?.[name]?.color;
-  if (official) {
-    const normalized = colorToHex(official);
-    return { color: normalized || official, isOfficial: true };
+/**
+ * Resuelve el color para una o múltiples personas
+ * @param {string|string[]} nameOrNames - Nombre(s) de persona(s)
+ * @param {Object} legendPeopleMap - Mapa de personas oficiales
+ * @returns {Object} { color, isOfficial, people }
+ */
+export function resolvePersonColor(nameOrNames, legendPeopleMap) {
+  // Normalizar a array
+  const names = Array.isArray(nameOrNames) ? nameOrNames : [nameOrNames];
+  
+  if (names.length === 0) {
+    return { color: "#808080", isOfficial: false, people: [] };
   }
-  return { color: autoColorForName(name), isOfficial: false };
+  
+  if (names.length === 1) {
+    const name = names[0];
+    const official = legendPeopleMap?.[name]?.color;
+    if (official) {
+      const normalized = colorToHex(official);
+      return { color: normalized || official, isOfficial: true, people: [name] };
+    }
+    return { color: autoColorForName(name), isOfficial: false, people: [name] };
+  }
+  
+  // Múltiples personas: mezclar colores
+  const colors = names.map(name => {
+    const official = legendPeopleMap?.[name]?.color;
+    if (official) {
+      return colorToHex(official) || official;
+    }
+    return autoColorForName(name);
+  });
+  
+  const mixedColor = averageColorsHex(colors);
+  const allOfficial = names.every(name => legendPeopleMap?.[name]?.color);
+  
+  return { color: mixedColor, isOfficial: allOfficial, people: names };
 }
 
 export function autoColorForName(name) {

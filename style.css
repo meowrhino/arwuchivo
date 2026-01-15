@@ -1,70 +1,63 @@
 /* ============================================
-   arwuchivo - Archivo de videos de kung fu
-   Estética divertida y juguetona
+   arwuchivo - Minimal Mobile First
    ============================================ */
 
-/* Reset básico */
+/* Reset */
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
-/* Variables de color - Estética divertida */
+/* Variables */
 :root {
-  /* Colores principales - Inspirados en Gold y LightGoldenRodYellow */
-  --gold: #FFD700;
-  --gold-light: #FAFAD2;
-  --gold-dark: #DAA520;
+  --bg: #ffffff;
+  --text: #000000;
+  --text-muted: #666666;
+  --border: #e0e0e0;
+  --overlay-bg: rgba(0, 0, 0, 0.9);
   
-  /* Fondos */
-  --bg: #FFFEF8;
-  --bg-alt: #FFF9E6;
+  /* Espaciado minimal */
+  --header-h: 8dvh;
+  --legend-size: 80px;
+  --upload-btn-size: 56px;
   
-  /* Textos */
-  --text: #2C2416;
-  --text-muted: #8B7355;
-  
-  /* Acentos */
-  --accent: #FF6B6B;
-  --accent-light: #FFE5E5;
-  
-  /* Espaciado */
-  --h-top: 8dvh;
-  --h-bottom: 12dvh;
-  --h-grid: 80dvh;
-  
-  /* Bordes redondeados */
-  --radius: 16px;
-  --radius-lg: 24px;
+  /* Bordes menos redondeados */
+  --radius: 4px;
+  --radius-sm: 2px;
 }
 
-/* Body y estructura general */
+/* Body */
 html,
 body {
   height: 100%;
+  overflow: hidden;
 }
 
 body {
-  margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  overflow: hidden;
-  line-height: 1.5;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
 }
 
 /* ============================================
-   TOPBAR - Fecha y selector de mes
+   HEADER - Mes/Año centrado
    ============================================ */
 
-.topbar {
-  height: var(--h-top);
+.header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--header-h);
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-alt);
-  position: relative;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  z-index: 100;
 }
 
 .date-btn {
@@ -72,75 +65,198 @@ body {
   border: none;
   background: transparent;
   color: var(--text);
-  font-size: 32px;
-  font-weight: 900;
-  letter-spacing: -0.02em;
-  padding: 12px 24px;
+  font-size: 16px;
+  font-weight: 600;
+  padding: 8px 16px;
   cursor: pointer;
   border-radius: var(--radius);
-  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: background 0.2s ease;
   text-transform: lowercase;
+  letter-spacing: 0.02em;
 }
 
 .date-btn:hover {
-  background: var(--gold-light);
-  color: var(--gold-dark);
-  transform: scale(1.05);
+  background: #f5f5f5;
 }
 
 .date-btn:active {
-  transform: scale(0.98);
-}
-
-.month-picker {
-  position: absolute;
-  inset: auto;
-  opacity: 0;
-  pointer-events: none;
+  background: #e0e0e0;
 }
 
 /* ============================================
-   MONTH PICKER OVERLAY - Selector de mes visual
+   CANVAS - Espacio completo para videos
    ============================================ */
 
-.month-picker-overlay {
+.canvas {
   position: fixed;
-  inset: 0;
-  background: rgba(44, 36, 22, 0.7);
-  backdrop-filter: blur(8px);
+  top: var(--header-h);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.empty {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--text-muted);
+  font-size: 14px;
+  text-align: center;
+}
+
+/* Videos flotantes */
+.video-item {
+  position: absolute;
+  cursor: pointer;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.video-item:hover {
+  transform: scale(1.05);
+  z-index: 10;
+}
+
+.video-item:active {
+  transform: scale(0.98);
+}
+
+.video-item video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Indicador de color (línea inferior) */
+.video-item::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--video-color, #000);
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+}
+
+/* ============================================
+   LEYENDA - Pequeñita abajo derecha
+   ============================================ */
+
+.legend {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  max-width: var(--legend-size);
+  font-size: 10px;
+  color: var(--text-muted);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.legend-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ============================================
+   BOTÓN DE SUBIDA - Flotante abajo izquierda
+   ============================================ */
+
+.upload-btn {
+  position: fixed;
+  bottom: 16px;
+  left: 16px;
+  width: var(--upload-btn-size);
+  height: var(--upload-btn-size);
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 32px;
+  font-weight: 300;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transition: all 0.2s ease;
+  z-index: 50;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
-  z-index: 2000;
 }
 
-.month-picker-overlay[hidden] {
+.upload-btn:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+.upload-btn:active {
+  transform: scale(0.95);
+}
+
+/* ============================================
+   MENÚ DE ESTACIONES
+   ============================================ */
+
+.season-menu {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 16px;
+}
+
+.season-menu[hidden] {
   display: none;
 }
 
-.month-picker-inner {
-  width: min(600px, 100%);
-  max-height: 80vh;
+.season-menu-inner {
+  width: min(400px, 100%);
+  max-height: 80dvh;
   background: var(--bg);
-  border-radius: var(--radius-lg);
-  padding: 32px;
+  border-radius: var(--radius);
+  padding: 24px;
   position: relative;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
   overflow-y: auto;
 }
 
-.month-picker-close {
+.season-menu-close {
   position: absolute;
-  top: 16px;
-  right: 16px;
+  top: 12px;
+  right: 12px;
   border: none;
-  background: var(--gold-light);
-  color: var(--text);
-  font-size: 28px;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 24px;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -150,386 +266,496 @@ body {
   line-height: 1;
 }
 
-.month-picker-close:hover {
-  background: var(--accent);
-  color: white;
-  transform: rotate(90deg);
-}
-
-.month-picker-title {
-  font-size: 24px;
-  font-weight: 800;
-  margin-bottom: 24px;
+.season-menu-close:hover {
+  background: #f5f5f5;
   color: var(--text);
-  text-transform: lowercase;
 }
 
-.month-picker-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-  gap: 12px;
+.season-menu-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
 
-.month-btn {
+.season-year {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.season-year-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.season-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 16px;
+}
+
+.season-item {
   appearance: none;
   border: none;
-  background: var(--bg-alt);
+  background: transparent;
   color: var(--text-muted);
   font-size: 14px;
-  font-weight: 600;
-  padding: 16px 12px;
-  border-radius: var(--radius);
+  padding: 8px 12px;
+  text-align: left;
   cursor: pointer;
+  border-radius: var(--radius);
   transition: all 0.2s ease;
-  text-transform: lowercase;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.month-btn:hover {
-  background: var(--gold-light);
+.season-item:hover {
+  background: #f5f5f5;
   color: var(--text);
-  transform: translateY(-2px);
 }
 
-.month-btn.has-content {
-  background: var(--gold);
+.season-item.has-content {
+  font-weight: 600;
   color: var(--text);
-  font-weight: 700;
 }
 
-.month-btn.has-content:hover {
-  background: var(--gold-dark);
-  color: white;
-}
-
-.month-btn.is-current {
-  outline: 3px solid var(--accent);
-  outline-offset: 2px;
+.season-item.is-current {
+  background: #000;
+  color: #fff;
 }
 
 /* ============================================
-   STAGE - Área principal de contenido
+   OVERLAY DE VIDEO FULLSCREEN
    ============================================ */
 
-.stage {
-  height: var(--h-grid);
+.video-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 300;
+}
+
+.video-overlay[hidden] {
+  display: none;
+}
+
+.video-overlay-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  border: none;
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  font-size: 32px;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  font-weight: 300;
+  line-height: 1;
+  z-index: 10;
+}
+
+.video-overlay-close:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.video-overlay-body {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.video-overlay-body video {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: var(--radius);
+}
+
+/* ============================================
+   MODAL DE PASSWORD
+   ============================================ */
+
+.password-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 250;
+  padding: 16px;
+}
+
+.password-overlay[hidden] {
+  display: none;
+}
+
+.password-overlay-inner {
+  width: min(360px, 100%);
+  background: var(--bg);
+  border-radius: var(--radius);
+  padding: 24px;
+  position: relative;
+}
+
+.password-overlay-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 24px;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  font-weight: 300;
+  line-height: 1;
+}
+
+.password-overlay-close:hover {
+  background: #f5f5f5;
+  color: var(--text);
+}
+
+.password-form {
   display: flex;
   flex-direction: column;
-  background: var(--bg);
+  gap: 16px;
 }
 
-/* Nota de Curt */
-.note {
-  padding: 16px 24px;
-  font-size: 16px;
-  background: var(--accent-light);
+.password-form label {
+  font-size: 14px;
+  font-weight: 600;
   color: var(--text);
-  font-style: italic;
-  font-weight: 500;
-  text-align: center;
 }
 
-.note.is-dark {
-  background: #FFE5B4;
-  color: #8B4513;
+.password-form input {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
 }
 
-.note.is-light {
-  background: #E6F3FF;
-  color: #1E40AF;
+.password-form input:focus {
+  outline: none;
+  border-color: var(--text);
 }
 
-/* Grid de videos */
-.grid {
-  flex: 1;
-  display: grid;
-  gap: 20px;
-  padding: 20px;
-  align-content: start;
-  justify-content: stretch;
+.password-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.password-actions button {
+  padding: 10px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.password-actions button:hover {
+  background: #f5f5f5;
+}
+
+.password-actions button.primary {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+}
+
+.password-actions button.primary:hover {
+  background: #333;
+}
+
+.password-error {
+  font-size: 12px;
+  color: #dc2626;
+  padding: 8px 12px;
+  background: #fee2e2;
+  border-radius: var(--radius);
+}
+
+/* ============================================
+   MODAL DE SUBIDA
+   ============================================ */
+
+.upload-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 250;
+  padding: 16px;
+}
+
+.upload-overlay[hidden] {
+  display: none;
+}
+
+.upload-overlay-inner {
+  width: min(480px, 100%);
+  max-height: 90dvh;
+  background: var(--bg);
+  border-radius: var(--radius);
+  padding: 24px;
+  position: relative;
   overflow-y: auto;
 }
 
-/* Mensaje vacío */
-.empty {
-  padding: 48px 24px;
-  color: var(--text-muted);
-  text-align: center;
-  font-size: 18px;
-  font-weight: 600;
+.upload-overlay-inner h2 {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 20px;
+  color: var(--text);
 }
 
-/* ============================================
-   CARDS - Tarjetas de video
-   ============================================ */
-
-.card {
-  border: 4px solid transparent;
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  background: white;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.card:hover {
-  transform: translateY(-8px) rotate(-1deg);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15);
-}
-
-.card-btn {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  padding: 0;
+.upload-overlay-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
   border: none;
   background: transparent;
-  color: inherit;
-  text-align: left;
+  color: var(--text-muted);
+  font-size: 24px;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius);
   cursor: pointer;
-  height: 100%;
-  width: 100%;
-}
-
-/* Área de media (video/imagen) */
-.media {
-  position: relative;
-  flex: 1;
-  min-height: 220px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-alt);
-  overflow: hidden;
+  transition: all 0.2s ease;
+  font-weight: 300;
+  line-height: 1;
 }
 
-.media img,
-.media video {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
+.upload-overlay-close:hover {
+  background: #f5f5f5;
+  color: var(--text);
 }
 
-/* Metadatos del video */
-.meta {
-  padding: 20px;
+.upload-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.form-field {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  font-size: 15px;
-  background: white;
 }
 
-.meta .t {
-  color: var(--text);
-  font-weight: 700;
-  font-size: 18px;
-  line-height: 1.3;
-}
-
-.meta .d {
-  color: var(--text-muted);
+.form-field label {
   font-size: 13px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  color: var(--text);
 }
 
-/* Password "hackeable" (oculto por defecto) */
-.password {
-  display: none;
+.form-field input[type="text"],
+.form-field input[type="password"],
+.form-field input[type="date"] {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
 }
 
-/* ============================================
-   BOTTOMBAR - Timeline y leyenda
-   ============================================ */
+.form-field input:focus {
+  outline: none;
+  border-color: var(--text);
+}
 
-.bottombar {
-  height: var(--h-bottom);
+.form-field input[type="file"] {
+  font-size: 13px;
+}
+
+.upload-people {
   display: flex;
   flex-direction: column;
-  background: var(--bg-alt);
+  gap: 8px;
 }
 
-/* Timeline (70% del bottombar) */
-.timeline-wrap {
-  flex: 7 1 0;
+.person-chip {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 24px;
-}
-
-.timeline {
-  width: auto;
-  max-width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: var(--gold) transparent;
-  padding: 12px 0;
-}
-
-.timeline::-webkit-scrollbar {
-  height: 8px;
-}
-
-.timeline::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.timeline::-webkit-scrollbar-thumb {
-  background: var(--gold-light);
-  border-radius: 4px;
-}
-
-.timeline::-webkit-scrollbar-thumb:hover {
-  background: var(--gold);
-}
-
-/* Puntos de la timeline */
-.day-dot {
-  flex: 0 0 auto;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  border: 3px solid var(--bg-alt);
-  background: var(--bg-alt);
-  cursor: default;
-  position: relative;
-  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.day-dot.is-active {
-  cursor: pointer;
-  border-color: transparent;
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15);
-}
-
-.day-dot.is-active:hover {
-  transform: scale(1.5);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
-}
-
-.day-dot.is-selected {
-  outline: 4px solid var(--accent);
-  outline-offset: 4px;
-}
-
-/* Leyenda (30% del bottombar) */
-.legend-wrap {
-  flex: 3 1 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 24px;
-}
-
-.legend {
-  width: auto;
-  display: flex;
-  gap: 24px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  font-size: 13px;
-  color: var(--text-muted);
-  scrollbar-width: none;
-}
-
-.legend::-webkit-scrollbar {
-  display: none;
-}
-
-.legend-block {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.legend-title {
-  font-weight: 800;
-  color: var(--text);
-  text-transform: uppercase;
-  font-size: 11px;
-  letter-spacing: 0.1em;
-}
-
-.legend-chips {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.chip {
-  display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 14px;
-  background: white;
-  border-radius: 999px;
+  padding: 8px 12px;
+  background: #f5f5f5;
+  border-radius: var(--radius);
   font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
 }
 
-.chip .dot {
+.person-chip-dot {
   width: 12px;
   height: 12px;
   border-radius: 50%;
   flex-shrink: 0;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
-/* ============================================
-   OVERLAY - Modal para videos y passwords
-   ============================================ */
+.person-chip-name {
+  flex: 1;
+}
 
-.overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(44, 36, 22, 0.85);
-  backdrop-filter: blur(12px);
+.person-chip-remove {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 16px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
-  z-index: 1000;
+  transition: all 0.2s ease;
+  line-height: 1;
 }
 
-.overlay[hidden] {
+.person-chip-remove:hover {
+  background: #e0e0e0;
+  color: var(--text);
+}
+
+.add-person-btn {
+  appearance: none;
+  border: 1px dashed var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 10px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 600;
+}
+
+.add-person-btn:hover {
+  border-color: var(--text);
+  color: var(--text);
+  background: #f5f5f5;
+}
+
+.form-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.form-actions button {
+  padding: 10px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.form-actions button:hover {
+  background: #f5f5f5;
+}
+
+.form-actions button.primary {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+}
+
+.form-actions button.primary:hover {
+  background: #333;
+}
+
+/* ============================================
+   MODAL DE NUEVA PERSONA
+   ============================================ */
+
+.new-person-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 300;
+  padding: 16px;
+}
+
+.new-person-overlay[hidden] {
   display: none;
 }
 
-.overlay-inner {
-  width: min(920px, 100%);
-  background: white;
-  border-radius: var(--radius-lg);
+.new-person-overlay-inner {
+  width: min(360px, 100%);
+  background: var(--bg);
+  border-radius: var(--radius);
   padding: 24px;
   position: relative;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
 }
 
-.overlay-close {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  border: none;
-  background: var(--gold-light);
+.new-person-overlay-inner h3 {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 16px;
   color: var(--text);
-  font-size: 28px;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
+}
+
+.new-person-overlay-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 24px;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -539,156 +765,180 @@ body {
   line-height: 1;
 }
 
-.overlay-close:hover {
-  background: var(--accent);
-  color: white;
-  transform: rotate(90deg);
+.new-person-overlay-close:hover {
+  background: #f5f5f5;
+  color: var(--text);
 }
 
-.overlay video {
-  width: 100%;
-  max-height: 70vh;
-  border-radius: 12px;
-}
-
-/* Modal de password */
-.modal {
+.new-person-form {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  padding: 24px;
-  max-width: 400px;
-  margin: 0 auto;
+  gap: 16px;
 }
 
-.modal label {
-  font-size: 16px;
-  font-weight: 700;
+.new-person-form input[type="color"] {
+  width: 100%;
+  height: 48px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+/* ============================================
+   MODAL TEMPORAL (Selector de personas)
+   ============================================ */
+
+.temp-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 350;
+  padding: 16px;
+}
+
+.temp-modal-inner {
+  width: min(360px, 100%);
+  max-height: 80dvh;
+  background: var(--bg);
+  border-radius: var(--radius);
+  padding: 24px;
+  position: relative;
+  overflow-y: auto;
+}
+
+.temp-modal-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 24px;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  font-weight: 300;
+  line-height: 1;
+}
+
+.temp-modal-close:hover {
+  background: #f5f5f5;
   color: var(--text);
 }
 
-.modal input {
-  width: 100%;
-  padding: 14px 16px;
-  border-radius: 12px;
-  border: 2px solid var(--gold-light);
+.person-selector h4 {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  color: var(--text);
+}
+
+.person-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.person-option {
+  appearance: none;
+  border: 1px solid var(--border);
   background: var(--bg);
   color: var(--text);
-  font-family: inherit;
-  font-size: 16px;
-  transition: all 0.2s ease;
-}
-
-.modal input:focus {
-  outline: none;
-  border-color: var(--gold);
-  box-shadow: 0 0 0 4px rgba(255, 215, 0, 0.2);
-}
-
-.modal .row {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  justify-content: flex-end;
-}
-
-.btn {
-  padding: 12px 20px;
-  border-radius: 12px;
-  border: 2px solid var(--gold-light);
-  background: white;
-  color: var(--text);
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 15px;
-  font-weight: 700;
-  transition: all 0.2s ease;
-}
-
-.btn:hover {
-  background: var(--gold-light);
-  transform: translateY(-2px);
-}
-
-.btn.primary {
-  border-color: var(--gold);
-  background: var(--gold);
-  color: var(--text);
-}
-
-.btn.primary:hover {
-  background: var(--gold-dark);
-  color: white;
-}
-
-.msg {
   font-size: 14px;
-  color: #DC2626;
-  padding: 12px 16px;
-  background: #FEE2E2;
-  border-radius: 8px;
-  border: 2px solid #FECACA;
+  padding: 12px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.person-option:hover:not(:disabled) {
+  background: #f5f5f5;
+  border-color: var(--text);
+}
+
+.person-option:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.person-option.selected {
+  background: #f5f5f5;
+}
+
+.person-option-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.person-option-name {
+  flex: 1;
+  text-align: left;
+}
+
+.new-person-trigger {
+  appearance: none;
+  border: 1px dashed var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 10px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.2s ease;
   font-weight: 600;
+  width: 100%;
+  font-family: inherit;
+}
+
+.new-person-trigger:hover {
+  border-color: var(--text);
+  color: var(--text);
+  background: #f5f5f5;
+}
+
+.empty-people {
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 12px;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
 }
 
 /* ============================================
    RESPONSIVE
    ============================================ */
 
-@media (max-width: 768px) {
-  .date-btn {
-    font-size: 24px;
-  }
-  
-  .grid {
-    gap: 16px;
-    padding: 16px;
-  }
-  
-  .card {
-    min-height: 300px;
-  }
-  
-  .timeline {
-    gap: 8px;
-  }
-  
-  .day-dot {
-    width: 14px;
-    height: 14px;
+@media (max-width: 480px) {
+  .upload-btn {
+    --upload-btn-size: 48px;
+    font-size: 28px;
   }
   
   .legend {
-    font-size: 12px;
+    font-size: 9px;
+    bottom: 12px;
+    right: 12px;
   }
   
-  .chip {
-    font-size: 12px;
-    padding: 5px 12px;
-  }
-
-  .month-picker-grid {
-    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-  }
-}
-
-@media (max-width: 480px) {
-  .grid {
-    gap: 12px;
-    padding: 12px;
-  }
-  
-  .bottombar {
-    --h-bottom: 14dvh;
-  }
-  
-  .legend-block {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 6px;
-  }
-
-  .month-picker-inner {
-    padding: 24px 16px;
+  .legend-dot {
+    width: 6px;
+    height: 6px;
   }
 }
