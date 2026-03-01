@@ -1,17 +1,16 @@
 import { daysInMonth } from "./data.js";
-import { resolvePersonColor, averageColorsHex } from "./colors.js";
+import { resolveFusionRadial } from "./colors.js";
 
 /**
- * Timeline siempre visible:
- * - Crea 28-31 puntos (según mes)
- * - Días con contenido -> activos y coloreados
- * - Color por día -> promedio RGB de las personas presentes en ese día (equilibrado por personas)
+ * Timeline con fusion de colores:
+ * - Dias con 1 persona -> color solido
+ * - Dias con 2+ personas -> conic-gradient (fusion Steven Universe)
  */
 export function renderTimeline({
   el,
   yyMM,
   selectedDay,
-  indexDays, // array de { d, people, count }
+  indexDays,
   legendPeopleMap,
   onSelectDay
 }) {
@@ -30,7 +29,7 @@ export function renderTimeline({
     const dot = document.createElement("button");
     dot.type = "button";
     dot.className = "day-dot";
-    dot.setAttribute("aria-label", `Día ${dd}`);
+    dot.setAttribute("aria-label", `Dia ${dd}`);
 
     if (d === selectedDay) dot.classList.add("is-selected");
 
@@ -38,12 +37,9 @@ export function renderTimeline({
     if (meta?.count > 0) {
       dot.classList.add("is-active");
 
-      // Regla de 3 “real”: si hay N personas -> cada una aporta 100/N%.
       const people = Array.isArray(meta.people) ? meta.people : [];
-      const colors = people.map(p => resolvePersonColor(p, legendPeopleMap).color);
-      const mix = averageColorsHex(colors);
-
-      dot.style.background = mix;
+      const fusionBg = resolveFusionRadial(people, legendPeopleMap);
+      dot.style.background = fusionBg;
 
       dot.addEventListener("click", () => onSelectDay(d));
     }

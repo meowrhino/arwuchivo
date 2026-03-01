@@ -7,23 +7,17 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <!-- Header: Mes/Año centrado -->
   <header class="header">
-    <button id="dateBtn" class="date-btn" type="button" aria-label="Cambiar mes/estación"></button>
+    <button id="dateBtn" class="date-btn" type="button" aria-label="cambiar mes"></button>
   </header>
 
-  <!-- Canvas: Espacio completo para videos -->
-  <main class="canvas" id="canvas">
-    <div class="empty" id="empty" hidden>no hay videos aquí (todavía)</div>
-  </main>
+  <main class="canvas" id="canvas"></main>
+  <div class="empty" id="empty" hidden>no hay videos aqui (todavia)</div>
 
-  <!-- Leyenda: Pequeñita abajo derecha -->
-  <div class="legend" id="legend" aria-label="Leyenda de personas"></div>
+  <div class="legend" id="legend" aria-label="leyenda"></div>
 
-  <!-- Botón de subida: Flotante abajo izquierda -->
-  <button id="uploadBtn" class="upload-btn" type="button" aria-label="Subir video">+</button>
+  <button id="uploadBtn" class="upload-btn" type="button" aria-label="subir video">+</button>
 
-  <!-- Menú de estaciones -->
   <div id="seasonMenu" class="season-menu" hidden>
     <div class="season-menu-inner">
       <button id="seasonMenuClose" class="season-menu-close" type="button" aria-label="Cerrar">×</button>
@@ -62,6 +56,7 @@
         <div class="form-field">
           <label for="uploadVideo">video</label>
           <input id="uploadVideo" type="file" accept="video/*" required />
+          <div id="compressionStatus"></div>
         </div>
         
         <div class="form-field">

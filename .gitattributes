@@ -1,2 +1,13 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Video files - LFS ready (descomentar cuando el repo pese >500MB)
+# Requiere: git lfs install
+# Luego: git lfs migrate import --include="*.mp4,*.webm,*.mov"
+# O migrar videos a Cloudflare R2 (10GB gratis, 0 coste de ancho de banda)
+# *.mp4 filter=lfs diff=lfs merge=lfs -text
+# *.webm filter=lfs diff=lfs merge=lfs -text
+# *.mov filter=lfs diff=lfs merge=lfs -text
+# *.jpg filter=lfs diff=lfs merge=lfs -text
+# *.jpeg filter=lfs diff=lfs merge=lfs -text
+# *.png filter=lfs diff=lfs merge=lfs -text
