@@ -5,6 +5,9 @@
     },
     "Bruno": {
       "color": "LightGoldenRodYellow"
+    },
+    "TEST": {
+      "color": "#002FA7"
     }
   }
 }
