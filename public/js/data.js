@@ -6,6 +6,7 @@
 let cachedIndex = null;
 
 export async function loadIndex() {
+  cachedIndex = null;  // Invalidate cache to get fresh data
   const data = await fetchJSON('data/index.json');
   cachedIndex = data;
   const allMonths = Array.isArray(data?.days) ? data.days.map(d => d.d.slice(0, 5)) : [];

@@ -7,6 +7,7 @@ import { resolvePersonColor } from './colors.js';
 
 let selectedPeople = [];
 let legendPeopleMap = {};
+let newPeopleCreated = {};  // Track new people added during this session
 
 export function initUpload({ legendPeopleMap: legend, onUpload }) {
   legendPeopleMap = legend || {};
@@ -24,6 +25,7 @@ export function initUpload({ legendPeopleMap: legend, onUpload }) {
   uploadBtn.addEventListener('click', () => {
     uploadOverlay.hidden = false;
     selectedPeople = [];
+    newPeopleCreated = {};
     renderSelectedPeople();
     resetCompressionUI();
     document.getElementById('uploadDate').value = new Date().toISOString().split('T')[0];
@@ -67,11 +69,25 @@ export function initUpload({ legendPeopleMap: legend, onUpload }) {
       title: document.getElementById('uploadTitle').value || 'sin titulo',
       date: document.getElementById('uploadDate').value,
       people: selectedPeople,
-      password: document.getElementById('uploadPassword').value || null
+      password: document.getElementById('uploadPassword').value || null,
+      newPeople: Object.keys(newPeopleCreated).length ? newPeopleCreated : null,
     };
 
-    if (onUpload) await onUpload(formData);
-    closeModal();
+    // Show uploading state
+    const submitBtn = uploadForm.querySelector('button[type="submit"]');
+    const originalText = submitBtn.textContent;
+    submitBtn.textContent = 'subiendo...';
+    submitBtn.disabled = true;
+
+    try {
+      if (onUpload) await onUpload(formData);
+      closeModal();
+    } catch (err) {
+      alert('error al subir: ' + err.message);
+    } finally {
+      submitBtn.textContent = originalText;
+      submitBtn.disabled = false;
+    }
   });
 }
 
@@ -339,6 +355,7 @@ function showNewPersonModal() {
     if (!name) return;
 
     legendPeopleMap[name] = { color };
+    newPeopleCreated[name] = { color };
     if (!selectedPeople.includes(name)) {
       selectedPeople.push(name);
       renderSelectedPeople();
@@ -378,6 +395,18 @@ function renderSelectedPeople() {
 }
 
 export async function handleUpload(formData) {
-  console.log('Upload data:', formData);
-  alert(`video "${formData.title}" registrado\n\npersonas: ${formData.people.join(', ')}\nfecha: ${formData.date}\n\nrecuerda mover el archivo a videos/ y actualizar los json`);
+  const body = new FormData();
+  body.append('video', formData.video);
+  body.append('title', formData.title);
+  body.append('date', formData.date);
+  body.append('people', JSON.stringify(formData.people));
+  if (formData.password) body.append('password', formData.password);
+  if (formData.newPeople) body.append('newPeople', JSON.stringify(formData.newPeople));
+
+  const res = await fetch('/api/upload', { method: 'POST', body });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'upload failed' }));
+    throw new Error(err.error || 'upload failed');
+  }
+  return res.json();
 }

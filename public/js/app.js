@@ -39,7 +39,19 @@ async function init() {
 
     initUpload({
       legendPeopleMap,
-      onUpload: handleUpload
+      onUpload: async (formData) => {
+        await handleUpload(formData);
+        // Refresh: reload index, legend, and re-render current month
+        indexData = await loadIndex();
+        legendData = await loadLegend();
+        legendPeopleMap = legendData?.people || {};
+        renderLegend();
+        // Navigate to the month of the uploaded video
+        const uploadYY = formData.date.slice(2, 4);
+        const uploadMM = formData.date.slice(5, 7);
+        const uploadMonth = `${uploadYY}-${uploadMM}`;
+        navigateToMonth(uploadMonth);
+      }
     });
 
     await loadAndRenderMonth(currentMonth);
