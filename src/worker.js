@@ -65,6 +65,19 @@ async function handleUpload(request, env) {
       return jsonResponse({ error: 'faltan campos' }, 400);
     }
 
+    // Validate file type
+    const contentType = video.type || '';
+    if (!contentType.startsWith('video/')) {
+      return jsonResponse({ error: 'solo se aceptan archivos de video' }, 415);
+    }
+
+    // Validate file size (100MB max)
+    const MAX_SIZE = 100 * 1024 * 1024;
+    if (video.size > MAX_SIZE) {
+      const sizeMB = (video.size / (1024 * 1024)).toFixed(1);
+      return jsonResponse({ error: `archivo demasiado grande (${sizeMB} MB). maximo: 100 MB` }, 413);
+    }
+
     // Convert YYYY-MM-DD → YY, MM, DD
     const yy = dateStr.slice(2, 4);
     const mm = dateStr.slice(5, 7);

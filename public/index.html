@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+  <script src="coi-serviceworker.js"></script>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>arwuchivo</title>
@@ -56,30 +57,40 @@
         <div class="form-field">
           <label for="uploadVideo">video</label>
           <input id="uploadVideo" type="file" accept="video/*" required />
+          <div id="uploadVideoError" class="upload-error" hidden></div>
           <div id="compressionStatus"></div>
         </div>
-        
+
+        <div class="form-field" id="presetField" hidden>
+          <label>calidad</label>
+          <div class="preset-buttons">
+            <button type="button" class="preset-btn" data-preset="high">1080p</button>
+            <button type="button" class="preset-btn active" data-preset="medium">720p</button>
+            <button type="button" class="preset-btn" data-preset="low">480p</button>
+          </div>
+        </div>
+
         <div class="form-field">
           <label for="uploadTitle">título</label>
           <input id="uploadTitle" type="text" placeholder="ej: bloqueo + contra" />
         </div>
-        
+
         <div class="form-field">
           <label for="uploadDate">fecha</label>
           <input id="uploadDate" type="date" required />
         </div>
-        
+
         <div class="form-field">
           <label>persona(s)</label>
           <div id="uploadPeople" class="upload-people"></div>
           <button id="addPersonBtn" type="button" class="add-person-btn">+ añadir persona</button>
         </div>
-        
+
         <div class="form-field">
           <label for="uploadPassword">password (opcional)</label>
           <input id="uploadPassword" type="text" placeholder="dejar vacío si es público" />
         </div>
-        
+
         <div class="form-actions">
           <button type="button" id="uploadCancel">cancelar</button>
           <button type="submit" class="primary">subir</button>
@@ -98,12 +109,13 @@
           <label for="newPersonName">nombre</label>
           <input id="newPersonName" type="text" placeholder="ej: manu" required />
         </div>
-        
+
         <div class="form-field">
-          <label for="newPersonColor">color</label>
-          <input id="newPersonColor" type="color" value="#ffd700" required />
+          <label>color</label>
+          <div id="colorGrid" class="color-grid"></div>
+          <input id="newPersonColor" type="hidden" value="" />
         </div>
-        
+
         <div class="form-actions">
           <button type="button" id="newPersonCancel">cancelar</button>
           <button type="submit" class="primary">guardar</button>
@@ -112,6 +124,7 @@
     </div>
   </div>
 
+  <script src="ffmpeg.js"></script>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

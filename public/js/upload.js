@@ -1,13 +1,48 @@
 /**
  * upload.js
- * Interfaz de subida con compresion de video en el navegador
+ * Interfaz de subida con compresion de video via ffmpeg.wasm
  */
 
-import { resolvePersonColor } from './colors.js';
+import { resolvePersonColor, HTML_COLOR_HEX } from './colors.js';
 
 let selectedPeople = [];
 let legendPeopleMap = {};
-let newPeopleCreated = {};  // Track new people added during this session
+let newPeopleCreated = {};
+
+// FFmpeg state
+let ffmpeg = null;
+let ffmpegLoaded = false;
+let ffmpegLoading = false;
+let selectedPreset = 'medium';
+let compressedBlob = null;
+
+const PRESETS = {
+  high: {
+    label: '1080p',
+    maxWidth: 1920, maxHeight: 1080,
+    crf: 10, videoBitrate: '1500k', audioBitrate: '128k',
+    cpuUsed: 4, fps: null
+  },
+  medium: {
+    label: '720p',
+    maxWidth: 1280, maxHeight: 720,
+    crf: 20, videoBitrate: '1200k', audioBitrate: '96k',
+    cpuUsed: 5, fps: null
+  },
+  low: {
+    label: '480p',
+    maxWidth: 854, maxHeight: 480,
+    crf: 33, videoBitrate: '800k', audioBitrate: '96k',
+    cpuUsed: 8, fps: 24
+  }
+};
+
+const MAX_FILE_SIZE = 100 * 1024 * 1024;       // 100 MB
+const MAX_DURATION = 5 * 60;                    // 5 minutos
+const WORKERFS_THRESHOLD = 200 * 1024 * 1024;   // 200 MB
+const CORE_MT_BASE = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core-mt@0.12.9/dist/umd';
+
+// ─── Init ─────────────────────────────────────────────────────
 
 export function initUpload({ legendPeopleMap: legend, onUpload }) {
   legendPeopleMap = legend || {};
@@ -26,8 +61,11 @@ export function initUpload({ legendPeopleMap: legend, onUpload }) {
     uploadOverlay.hidden = false;
     selectedPeople = [];
     newPeopleCreated = {};
+    compressedBlob = null;
     renderSelectedPeople();
     resetCompressionUI();
+    hideVideoError();
+    document.getElementById('presetField').hidden = true;
     document.getElementById('uploadDate').value = new Date().toISOString().split('T')[0];
   });
 
@@ -35,7 +73,10 @@ export function initUpload({ legendPeopleMap: legend, onUpload }) {
     uploadOverlay.hidden = true;
     uploadForm.reset();
     selectedPeople = [];
+    compressedBlob = null;
     resetCompressionUI();
+    hideVideoError();
+    document.getElementById('presetField').hidden = true;
   };
 
   uploadOverlayClose.addEventListener('click', closeModal);
@@ -46,16 +87,48 @@ export function initUpload({ legendPeopleMap: legend, onUpload }) {
 
   addPersonBtn.addEventListener('click', () => showPersonSelector());
 
-  // Mostrar info del video al seleccionar
-  videoInput.addEventListener('change', () => {
+  // Video seleccionado → validar + comprimir
+  videoInput.addEventListener('change', async () => {
     const file = videoInput.files[0];
     if (!file) {
       resetCompressionUI();
+      hideVideoError();
+      document.getElementById('presetField').hidden = true;
+      compressedBlob = null;
       return;
     }
-    showVideoInfo(file);
+
+    const meta = await validateVideo(file);
+    if (!meta) {
+      compressedBlob = null;
+      document.getElementById('presetField').hidden = true;
+      return;
+    }
+
+    document.getElementById('compressionStatus').innerHTML =
+      `<div class="compression-status">${formatSize(file.size)} original</div>`;
+    document.getElementById('presetField').hidden = false;
+
+    compressedBlob = await compressVideo(file, meta);
   });
 
+  // Preset buttons
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedPreset = btn.dataset.preset;
+
+      const file = videoInput.files[0];
+      if (file) {
+        compressedBlob = null;
+        const meta = await extractVideoMetadata(file);
+        compressedBlob = await compressVideo(file, meta);
+      }
+    });
+  });
+
+  // Submit
   uploadForm.addEventListener('submit', async (e) => {
     e.preventDefault();
 
@@ -64,8 +137,20 @@ export function initUpload({ legendPeopleMap: legend, onUpload }) {
       return;
     }
 
+    if (!compressedBlob) {
+      alert('espera a que termine la compresion');
+      return;
+    }
+
+    const originalName = videoInput.files[0]?.name || 'video';
+    const compressedFile = new File(
+      [compressedBlob],
+      originalName.replace(/\.[^.]+$/, '.webm'),
+      { type: 'video/webm' }
+    );
+
     const formData = {
-      video: videoInput.files[0],
+      video: compressedFile,
       title: document.getElementById('uploadTitle').value || 'sin titulo',
       date: document.getElementById('uploadDate').value,
       people: selectedPeople,
@@ -73,7 +158,6 @@ export function initUpload({ legendPeopleMap: legend, onUpload }) {
       newPeople: Object.keys(newPeopleCreated).length ? newPeopleCreated : null,
     };
 
-    // Show uploading state
     const submitBtn = uploadForm.querySelector('button[type="submit"]');
     const originalText = submitBtn.textContent;
     submitBtn.textContent = 'subiendo...';
@@ -91,7 +175,7 @@ export function initUpload({ legendPeopleMap: legend, onUpload }) {
   });
 }
 
-// --- Compresion de video ---
+// ─── Validation ───────────────────────────────────────────────
 
 function formatSize(bytes) {
   if (bytes < 1024) return `${bytes} B`;
@@ -99,20 +183,54 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function showVideoInfo(file) {
-  const statusEl = document.getElementById('compressionStatus');
-  if (!statusEl) return;
-
-  statusEl.innerHTML = `
-    <div class="compression-status">
-      ${formatSize(file.size)} original
-      <button type="button" id="compressBtn" class="compress-btn">comprimir</button>
-    </div>
-  `;
-
-  document.getElementById('compressBtn').addEventListener('click', () => {
-    compressVideo(file);
+function extractVideoMetadata(file) {
+  return new Promise((resolve) => {
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.onloadedmetadata = () => {
+      URL.revokeObjectURL(video.src);
+      resolve({ duration: video.duration, width: video.videoWidth, height: video.videoHeight });
+    };
+    video.onerror = () => {
+      URL.revokeObjectURL(video.src);
+      resolve({ duration: 0, width: 0, height: 0 });
+    };
+    video.src = URL.createObjectURL(file);
   });
+}
+
+async function validateVideo(file) {
+  if (!file.type.startsWith('video/')) {
+    showVideoError('solo se aceptan archivos de video');
+    return null;
+  }
+
+  if (file.size > MAX_FILE_SIZE) {
+    const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+    showVideoError(`archivo demasiado grande (${sizeMB} MB). maximo: 100 MB`);
+    return null;
+  }
+
+  const meta = await extractVideoMetadata(file);
+  if (meta.duration > MAX_DURATION) {
+    const mins = Math.floor(meta.duration / 60);
+    const secs = Math.round(meta.duration % 60);
+    showVideoError(`video demasiado largo (${mins}:${String(secs).padStart(2, '0')}). maximo: 5 minutos`);
+    return null;
+  }
+
+  hideVideoError();
+  return meta;
+}
+
+function showVideoError(msg) {
+  const el = document.getElementById('uploadVideoError');
+  if (el) { el.textContent = msg; el.hidden = false; }
+}
+
+function hideVideoError() {
+  const el = document.getElementById('uploadVideoError');
+  if (el) { el.textContent = ''; el.hidden = true; }
 }
 
 function resetCompressionUI() {
@@ -120,34 +238,155 @@ function resetCompressionUI() {
   if (statusEl) statusEl.innerHTML = '';
 }
 
-async function compressVideo(file) {
+// ─── FFmpeg compression ───────────────────────────────────────
+
+async function toBlobURL(url, mimeType) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Failed to fetch ${url}: ${response.status}`);
+  const buffer = await response.arrayBuffer();
+  const blob = new Blob([buffer], { type: mimeType });
+  return URL.createObjectURL(blob);
+}
+
+async function loadFFmpeg() {
+  if (ffmpegLoaded || ffmpegLoading) return;
+  ffmpegLoading = true;
+
   const statusEl = document.getElementById('compressionStatus');
-  if (!statusEl) return;
+  if (statusEl) {
+    statusEl.innerHTML = '<div class="compression-status">cargando ffmpeg (~31 MB)...</div>';
+  }
+
+  try {
+    if (typeof SharedArrayBuffer === 'undefined') {
+      throw new Error('SharedArrayBuffer no disponible. Recarga la pagina.');
+    }
+
+    const { FFmpeg } = FFmpegWASM;
+    ffmpeg = new FFmpeg();
+
+    await ffmpeg.load({
+      coreURL: await toBlobURL(`${CORE_MT_BASE}/ffmpeg-core.js`, 'text/javascript'),
+      wasmURL: await toBlobURL(`${CORE_MT_BASE}/ffmpeg-core.wasm`, 'application/wasm'),
+      workerURL: await toBlobURL(`${CORE_MT_BASE}/ffmpeg-core.worker.js`, 'text/javascript'),
+    });
+
+    ffmpegLoaded = true;
+  } catch (err) {
+    console.error('Error loading FFmpeg:', err);
+    if (statusEl) {
+      statusEl.innerHTML = '<div class="compression-status">error al cargar ffmpeg. recarga la pagina.</div>';
+    }
+    ffmpeg = null;
+  } finally {
+    ffmpegLoading = false;
+  }
+}
+
+async function compressVideo(file, meta) {
+  const statusEl = document.getElementById('compressionStatus');
+  if (!statusEl) return null;
+
+  if (!ffmpegLoaded) {
+    await loadFFmpeg();
+    if (!ffmpegLoaded) return null;
+  }
+
+  const preset = PRESETS[selectedPreset];
 
   statusEl.innerHTML = `
-    <div class="compression-status">comprimiendo...</div>
+    <div class="compression-status">comprimiendo (${preset.label})...</div>
     <div class="compression-progress">
       <div class="compression-progress-bar" id="compressionBar"></div>
     </div>
   `;
 
   try {
-    const compressed = await reencodeVideo(file, (progress) => {
+    const ext = file.name.split('.').pop().toLowerCase();
+    const inputName = `input.${ext}`;
+    const outputName = 'output.webm';
+    let usedWorkerFS = false;
+    const mountPoint = '/mounted';
+
+    // Write input to virtual FS
+    if (file.size >= WORKERFS_THRESHOLD) {
+      try { await ffmpeg.unmount(mountPoint); } catch (_) {}
+      try { await ffmpeg.createDir(mountPoint); } catch (_) {}
+      await ffmpeg.mount('WORKERFS', { files: [file] }, mountPoint);
+      usedWorkerFS = true;
+    } else {
+      const buf = await file.arrayBuffer();
+      await ffmpeg.writeFile(inputName, new Uint8Array(buf));
+    }
+
+    const actualInput = usedWorkerFS ? `${mountPoint}/${file.name}` : inputName;
+
+    // Scale filter
+    let scaleFilter = null;
+    if (meta.width > preset.maxWidth || meta.height > preset.maxHeight) {
+      const ar = meta.width / meta.height;
+      let nw, nh;
+      if (ar > (preset.maxWidth / preset.maxHeight)) {
+        nw = preset.maxWidth;
+        nh = Math.round(preset.maxWidth / ar);
+        nh = nh % 2 === 0 ? nh : nh - 1;
+      } else {
+        nh = preset.maxHeight;
+        nw = Math.round(preset.maxHeight * ar);
+        nw = nw % 2 === 0 ? nw : nw - 1;
+      }
+      scaleFilter = `scale=${nw}:${nh}`;
+    }
+
+    // Build args
+    const args = [
+      '-i', actualInput,
+      '-c:v', 'libvpx',
+      '-crf', String(preset.crf),
+      '-b:v', preset.videoBitrate,
+      '-cpu-used', String(preset.cpuUsed),
+      '-lag-in-frames', '16',
+      '-auto-alt-ref', '1',
+      '-c:a', 'libvorbis',
+      '-b:a', preset.audioBitrate,
+      '-threads', '2',
+    ];
+    if (scaleFilter) args.push('-vf', scaleFilter);
+    if (preset.fps) args.push('-r', String(preset.fps));
+    args.push(outputName);
+
+    // Progress
+    const progressHandler = ({ progress }) => {
       const bar = document.getElementById('compressionBar');
-      if (bar) bar.style.width = `${Math.round(progress * 100)}%`;
-    });
+      if (bar) bar.style.width = `${Math.min(Math.round(progress * 100), 99)}%`;
+    };
+    ffmpeg.on('progress', progressHandler);
 
-    const reduction = ((1 - compressed.size / file.size) * 100).toFixed(0);
-    const downloadURL = URL.createObjectURL(compressed);
-    const ext = compressed.type.includes('webm') ? 'webm' : 'mp4';
-    const name = file.name.replace(/\.[^.]+$/, '') + `_compressed.${ext}`;
+    const exitCode = await ffmpeg.exec(args);
+    ffmpeg.off('progress', progressHandler);
 
+    if (exitCode !== 0) throw new Error(`ffmpeg exit code ${exitCode}`);
+
+    // Read output
+    const data = await ffmpeg.readFile(outputName);
+    const blob = new Blob([data.buffer], { type: 'video/webm' });
+
+    // Cleanup
+    try {
+      if (usedWorkerFS) await ffmpeg.unmount(mountPoint);
+      else await ffmpeg.deleteFile(inputName);
+      await ffmpeg.deleteFile(outputName);
+    } catch (_) {}
+
+    // Show result
+    const reduction = ((1 - blob.size / file.size) * 100).toFixed(0);
     statusEl.innerHTML = `
       <div class="compression-result">
-        ${formatSize(file.size)} → ${formatSize(compressed.size)} (-${reduction}%)
-        <a href="${downloadURL}" download="${name}">descargar</a>
+        ${formatSize(file.size)} → ${formatSize(blob.size)} (-${reduction}%)
       </div>
     `;
+
+    return blob;
 
   } catch (err) {
     console.error('Compression error:', err);
@@ -157,112 +396,44 @@ async function compressVideo(file) {
         <a href="https://handbrake.fr" target="_blank" rel="noopener" style="color:#000;text-decoration:underline">handbrake</a>
       </div>
     `;
+    return null;
   }
 }
 
-/**
- * Re-encode video using canvas + MediaRecorder.
- * Reduces resolution to 720p max and uses VP9 at controlled bitrate.
- */
-async function reencodeVideo(file, onProgress) {
-  const video = document.createElement('video');
-  video.src = URL.createObjectURL(file);
-  video.muted = true;
-  video.playsInline = true;
+// ─── Color grid (CSS named colors) ───────────────────────────
 
-  await new Promise((resolve, reject) => {
-    video.onloadedmetadata = resolve;
-    video.onerror = reject;
-  });
+function renderColorGrid() {
+  const grid = document.getElementById('colorGrid');
+  const hiddenInput = document.getElementById('newPersonColor');
+  if (!grid || !hiddenInput) return;
 
-  // Scale down to 720p max
-  const maxDim = 720;
-  let w = video.videoWidth;
-  let h = video.videoHeight;
-  if (Math.max(w, h) > maxDim) {
-    const scale = maxDim / Math.max(w, h);
-    w = Math.round(w * scale);
-    h = Math.round(h * scale);
-  }
-  // Ensure even dimensions
-  w = w % 2 === 0 ? w : w + 1;
-  h = h % 2 === 0 ? h : h + 1;
+  grid.innerHTML = '';
 
-  const canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext('2d');
-
-  const canvasStream = canvas.captureStream(30);
-
-  // Try to capture audio from the original video
-  try {
-    const audioCtx = new AudioContext();
-    const source = audioCtx.createMediaElementSource(video);
-    const dest = audioCtx.createMediaStreamDestination();
-    source.connect(dest);
-    source.connect(audioCtx.destination);
-    for (const track of dest.stream.getAudioTracks()) {
-      canvasStream.addTrack(track);
-    }
-  } catch {
-    // No audio or audio capture not supported - continue without audio
+  for (const [name, hex] of Object.entries(HTML_COLOR_HEX)) {
+    const swatch = document.createElement('button');
+    swatch.type = 'button';
+    swatch.className = 'color-swatch';
+    swatch.style.background = hex;
+    swatch.title = name;
+    swatch.dataset.colorName = name;
+    swatch.addEventListener('click', () => {
+      const prev = grid.querySelector('.color-swatch.selected');
+      if (prev) prev.classList.remove('selected');
+      swatch.classList.add('selected');
+      hiddenInput.value = name;
+    });
+    grid.appendChild(swatch);
   }
 
-  // Choose codec and bitrate
-  const bitsPerPixel = 1.5;
-  const bitrate = Math.round(w * h * bitsPerPixel);
-  let mimeType = 'video/webm;codecs=vp9';
-  if (!MediaRecorder.isTypeSupported(mimeType)) {
-    mimeType = 'video/webm;codecs=vp8';
+  // Default: gold
+  const defaultSwatch = grid.querySelector('[data-color-name="gold"]');
+  if (defaultSwatch) {
+    defaultSwatch.classList.add('selected');
+    hiddenInput.value = 'gold';
   }
-  if (!MediaRecorder.isTypeSupported(mimeType)) {
-    mimeType = 'video/webm';
-  }
-
-  const recorder = new MediaRecorder(canvasStream, {
-    mimeType,
-    videoBitsPerSecond: bitrate
-  });
-
-  const chunks = [];
-  recorder.ondataavailable = (e) => {
-    if (e.data.size > 0) chunks.push(e.data);
-  };
-
-  return new Promise((resolve, reject) => {
-    recorder.onstop = () => {
-      const blob = new Blob(chunks, { type: recorder.mimeType });
-      URL.revokeObjectURL(video.src);
-      resolve(blob);
-    };
-
-    recorder.onerror = reject;
-    recorder.start(100); // Collect data every 100ms
-
-    const duration = video.duration;
-
-    const drawFrame = () => {
-      if (video.ended || video.paused) return;
-      ctx.drawImage(video, 0, 0, w, h);
-      if (onProgress && duration) {
-        onProgress(Math.min(video.currentTime / duration, 1));
-      }
-      requestAnimationFrame(drawFrame);
-    };
-
-    video.onended = () => {
-      // Draw final frame
-      ctx.drawImage(video, 0, 0, w, h);
-      onProgress?.(1);
-      setTimeout(() => recorder.stop(), 200);
-    };
-
-    video.play().then(drawFrame).catch(reject);
-  });
 }
 
-// --- Person selector ---
+// ─── Person selector ──────────────────────────────────────────
 
 function showPersonSelector() {
   const existingPeople = Object.keys(legendPeopleMap);
@@ -336,6 +507,7 @@ function showNewPersonModal() {
   if (!newPersonOverlay || !newPersonForm) return;
 
   newPersonOverlay.hidden = false;
+  renderColorGrid();
 
   const closeModal = () => {
     newPersonOverlay.hidden = true;
@@ -351,8 +523,11 @@ function showNewPersonModal() {
   newPersonForm.addEventListener('submit', (e) => {
     e.preventDefault();
     const name = document.getElementById('newPersonName').value.trim();
-    const color = document.getElementById('newPersonColor').value;
-    if (!name) return;
+    const colorName = document.getElementById('newPersonColor').value;
+    if (!name || !colorName) return;
+
+    // Capitalize first letter to match leyenda convention (e.g. "Gold")
+    const color = colorName.charAt(0).toUpperCase() + colorName.slice(1);
 
     legendPeopleMap[name] = { color };
     newPeopleCreated[name] = { color };
@@ -393,6 +568,8 @@ function renderSelectedPeople() {
     });
   });
 }
+
+// ─── Upload handler ───────────────────────────────────────────
 
 export async function handleUpload(formData) {
   const body = new FormData();
