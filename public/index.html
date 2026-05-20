@@ -12,6 +12,8 @@
     <button id="dateBtn" class="date-btn" type="button" aria-label="cambiar mes"></button>
   </header>
 
+  <nav id="timeline" class="timeline" aria-label="timeline del mes"></nav>
+
   <main class="canvas" id="canvas"></main>
   <div class="empty" id="empty" hidden>no hay videos aqui (todavia)</div>
 
@@ -53,6 +55,7 @@
     <div class="upload-overlay-inner">
       <button id="uploadOverlayClose" class="upload-overlay-close" type="button" aria-label="Cerrar">×</button>
       <h2>subir video</h2>
+      <div id="capabilityWarning" class="capability-warning" hidden></div>
       <form id="uploadForm" class="upload-form">
         <div class="form-field">
           <label for="uploadVideo">video</label>
@@ -61,18 +64,14 @@
           <div id="compressionStatus"></div>
         </div>
 
-        <div class="form-field" id="presetField" hidden>
-          <label>calidad</label>
-          <div class="preset-buttons">
-            <button type="button" class="preset-btn" data-preset="high">1080p</button>
-            <button type="button" class="preset-btn active" data-preset="medium">720p</button>
-            <button type="button" class="preset-btn" data-preset="low">480p</button>
-          </div>
+<div class="form-field">
+          <label for="uploadTitle">título</label>
+          <input id="uploadTitle" type="text" placeholder="ej: bloqueo + contra" />
         </div>
 
         <div class="form-field">
-          <label for="uploadTitle">título</label>
-          <input id="uploadTitle" type="text" placeholder="ej: bloqueo + contra" />
+          <label for="uploadNotes">notas (opcional)</label>
+          <textarea id="uploadNotes" rows="3" placeholder="qué practicasteis, qué corregir..."></textarea>
         </div>
 
         <div class="form-field">

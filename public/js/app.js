@@ -8,8 +8,10 @@ import { resolvePersonColor, resolveFusionGradient } from './colors.js';
 import { generateRandomLayout, calculateAverageVideoSize, calculateCanvasHeight } from './layout.js';
 import { initSeasonMenu, updateDateButton } from './seasonMenu.js';
 import { initUpload, handleUpload } from './upload.js';
+import { renderTimeline } from './timeline.js';
 
 let currentMonth = null;
+let currentDay = null;  // YY-MM-DD when filtering, else null
 let indexData = null;
 let legendData = null;
 let legendPeopleMap = {};
@@ -22,11 +24,18 @@ async function init() {
 
     const urlParams = new URLSearchParams(window.location.search);
     const monthParam = urlParams.get('m');
+    const dayParam = urlParams.get('d');
 
-    if (monthParam && indexData.months.includes(monthParam)) {
+    if (dayParam && /^\d{2}-\d{2}-\d{2}$/.test(dayParam)) {
+      currentDay = dayParam;
+      currentMonth = dayParam.slice(0, 5);
+    } else if (monthParam && indexData.months.includes(monthParam)) {
       currentMonth = monthParam;
     } else {
-      currentMonth = indexData.months[0] || getCurrentMonthString();
+      // El más reciente: months puede venir en cualquier orden, así que ordeno
+      // lexicográficamente — el formato YY-MM con padding hace que funcione.
+      const sortedMonths = [...indexData.months].sort();
+      currentMonth = sortedMonths.at(-1) || getCurrentMonthString();
     }
 
     updateDateButton(currentMonth);
@@ -66,6 +75,7 @@ async function init() {
 
 async function loadAndRenderMonth(monthStr) {
   try {
+    renderMonthTimeline(monthStr);
     const dayData = await loadDayData(monthStr);
 
     if (!dayData || dayData.length === 0) {
@@ -73,9 +83,13 @@ async function loadAndRenderMonth(monthStr) {
       return;
     }
 
-    const allItems = dayData.flatMap(day =>
+    let allItems = dayData.flatMap(day =>
       day.items.map(item => ({ ...item, date: day.d }))
     );
+
+    if (currentDay) {
+      allItems = allItems.filter(item => item.date === currentDay);
+    }
 
     renderCanvas(allItems);
 
@@ -83,6 +97,20 @@ async function loadAndRenderMonth(monthStr) {
     console.error('Error loading month:', error);
     showEmpty();
   }
+}
+
+function renderMonthTimeline(monthStr) {
+  const el = document.getElementById('timeline');
+  if (!el || !indexData) return;
+
+  renderTimeline({
+    el,
+    yyMM: monthStr,
+    selectedDay: currentDay,
+    indexDays: indexData.days || [],
+    legendPeopleMap,
+    onSelectDay: (d) => navigateToDay(d),
+  });
 }
 
 function renderCanvas(items) {
@@ -102,8 +130,8 @@ function renderCanvas(items) {
   if (emptyEl) emptyEl.hidden = true;
 
   const containerSize = {
-    width: canvas.clientWidth,
-    height: window.innerHeight - (window.innerHeight * 0.06)
+    width: canvas.clientWidth || window.innerWidth || document.documentElement.clientWidth || 360,
+    height: (window.innerHeight || 640) * 0.94
   };
 
   const videoSize = calculateAverageVideoSize(items, containerSize);
@@ -133,10 +161,11 @@ function createVideoElement(item, position) {
 
   const video = document.createElement('video');
   video.src = item.src;
+  if (item.thumb) video.poster = item.thumb;
   video.muted = true;
   video.loop = true;
   video.playsInline = true;
-  video.preload = 'metadata';
+  video.preload = item.thumb ? 'none' : 'metadata';
 
   video.addEventListener('loadedmetadata', () => {
     const isVertical = video.videoHeight > video.videoWidth;
@@ -148,6 +177,20 @@ function createVideoElement(item, position) {
       div.style.width = `${position.height * aspectRatio}px`;
     }
   });
+
+  // If poster exists, infer aspect ratio from image to avoid loading video
+  if (item.thumb) {
+    const img = new Image();
+    img.onload = () => {
+      const ar = img.naturalWidth / img.naturalHeight;
+      if (img.naturalHeight > img.naturalWidth) {
+        div.style.height = `${position.width / ar}px`;
+      } else {
+        div.style.width = `${position.height * ar}px`;
+      }
+    };
+    img.src = item.thumb;
+  }
 
   div.addEventListener('click', () => {
     if (item.password) {
@@ -174,8 +217,28 @@ function showVideoFullscreen(item) {
   video.controls = true;
   video.autoplay = true;
   video.playsInline = true;
+  if (item.thumb) video.poster = item.thumb;
 
   body.appendChild(video);
+
+  if (item.title || item.notes) {
+    const meta = document.createElement('div');
+    meta.className = 'video-overlay-meta';
+    if (item.title && item.title !== 'sin titulo') {
+      const t = document.createElement('div');
+      t.className = 'video-overlay-title';
+      t.textContent = item.title;
+      meta.appendChild(t);
+    }
+    if (item.notes) {
+      const n = document.createElement('div');
+      n.className = 'video-overlay-notes';
+      n.textContent = item.notes;
+      meta.appendChild(n);
+    }
+    body.appendChild(meta);
+  }
+
   overlay.hidden = false;
 }
 
@@ -248,13 +311,34 @@ function initPasswordOverlay() {
 
 function navigateToMonth(monthStr) {
   currentMonth = monthStr;
+  currentDay = null;
   updateDateButton(monthStr);
 
   const url = new URL(window.location);
   url.searchParams.set('m', monthStr);
+  url.searchParams.delete('d');
   window.history.pushState({}, '', url);
 
   loadAndRenderMonth(monthStr);
+}
+
+function navigateToDay(dayStr) {
+  // Toggle: clicking the selected day clears the filter
+  if (currentDay === dayStr) {
+    currentDay = null;
+    const url = new URL(window.location);
+    url.searchParams.delete('d');
+    url.searchParams.set('m', currentMonth);
+    window.history.pushState({}, '', url);
+  } else {
+    currentDay = dayStr;
+    currentMonth = dayStr.slice(0, 5);
+    const url = new URL(window.location);
+    url.searchParams.set('d', dayStr);
+    url.searchParams.delete('m');
+    window.history.pushState({}, '', url);
+  }
+  loadAndRenderMonth(currentMonth);
 }
 
 function showEmpty() {

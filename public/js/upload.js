@@ -13,31 +13,138 @@ let newPeopleCreated = {};
 let ffmpeg = null;
 let ffmpegLoaded = false;
 let ffmpegLoading = false;
-let selectedPreset = 'medium';
+let useRawUpload = false; // true cuando el navegador no puede comprimir
 let compressedBlob = null;
+let thumbnailBlob = null;
+let originalFileSize = 0;
+let currentStatus = 'idle'; // idle | loading-ffmpeg | compressing | thumbnailing | ready | uploading | error
+let wakeLock = null;
 
-const PRESETS = {
-  high: {
-    label: '1080p',
-    maxWidth: 1920, maxHeight: 1080,
-    crf: 10, videoBitrate: '1500k', audioBitrate: '128k',
-    cpuUsed: 4, fps: null
-  },
-  medium: {
-    label: '720p',
-    maxWidth: 1280, maxHeight: 720,
-    crf: 20, videoBitrate: '1200k', audioBitrate: '96k',
-    cpuUsed: 5, fps: null
-  },
-  low: {
-    label: '480p',
-    maxWidth: 854, maxHeight: 480,
-    crf: 33, videoBitrate: '800k', audioBitrate: '96k',
-    cpuUsed: 8, fps: 24
+const AUTH_STORAGE_KEY = 'arwuchivo_auth_token';
+
+// ─── Detección de capacidades del navegador ───────────────────
+
+function detectCapabilities() {
+  const hasWASM = typeof WebAssembly !== 'undefined';
+  const hasSAB = typeof SharedArrayBuffer !== 'undefined' && self.crossOriginIsolated;
+  const cores = navigator.hardwareConcurrency || 1;
+  const lowEnd = cores <= 2;
+
+  if (!hasWASM) {
+    return {
+      mode: 'no-wasm',
+      message: 'tu navegador no soporta compresión. el video se subirá sin comprimir (debe pesar ≤ 95 MB).',
+      canCompress: false,
+    };
   }
+  if (!hasSAB) {
+    return {
+      mode: 'no-sab',
+      message: 'recarga la página una vez para activar el compresor. si no, se intentará subir sin comprimir (≤ 95 MB).',
+      canCompress: false,
+    };
+  }
+  if (lowEnd) {
+    return {
+      mode: 'medium',
+      message: 'dispositivo con pocos cores, la compresión puede tardar varios minutos. mantén la pantalla activa.',
+      canCompress: true,
+    };
+  }
+  return { mode: 'fast', message: null, canCompress: true };
+}
+
+// ─── Wake Lock (mantener pantalla activa durante tareas largas) ─
+
+async function acquireWakeLock() {
+  if (wakeLock || !navigator.wakeLock) return;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => { wakeLock = null; });
+  } catch (_) { wakeLock = null; }
+}
+
+function releaseWakeLock() {
+  if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+}
+
+// Re-acquire if user briefly hides the tab and comes back during compression
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' &&
+      (currentStatus === 'compressing' || currentStatus === 'uploading' || currentStatus === 'loading-ffmpeg')) {
+    acquireWakeLock();
+  }
+});
+
+// ─── Status / UI state ────────────────────────────────────────
+
+function setStatus(state, extra = {}) {
+  currentStatus = state;
+  const statusEl = document.getElementById('compressionStatus');
+  const submitBtn = document.querySelector('#uploadForm button[type="submit"]');
+  if (!statusEl || !submitBtn) return;
+
+  const cfg = {
+    'idle':            { html: '', btn: 'subir', disabled: true },
+    'loading-ffmpeg':  { html: progressHTML('preparando compresor', extra.label, extra.percent), btn: `preparando ${extra.percent ?? 0}%`, disabled: true },
+    'compressing':     { html: progressHTML('comprimiendo video', extra.label, extra.percent), btn: `comprimiendo ${extra.percent ?? 0}%`, disabled: true },
+    'thumbnailing':    { html: progressHTML('generando miniatura', null, 95), btn: 'casi listo...', disabled: true },
+    'ready':           { html: resultHTML(extra.originalSize, extra.finalSize), btn: 'subir', disabled: false },
+    'uploading':       { html: progressHTML('subiendo a la nube', null, extra.percent), btn: `subiendo ${extra.percent ?? 0}%`, disabled: true },
+    'error':           { html: `<div class="status-card status-error">${extra.message || 'error'}</div>`, btn: 'subir', disabled: false },
+  }[state] || { html: '', btn: 'subir', disabled: false };
+
+  const busy = ['loading-ffmpeg', 'compressing', 'thumbnailing', 'uploading'].includes(state);
+  const warning = busy
+    ? `<div class="status-warning">⚠ no cierres ni minimices esta pestaña hasta que termine</div>`
+    : '';
+
+  statusEl.innerHTML = cfg.html + warning;
+  submitBtn.textContent = cfg.btn;
+  submitBtn.disabled = cfg.disabled;
+}
+
+function progressHTML(title, sub, percent) {
+  const p = Math.min(Math.max(percent ?? 0, 0), 100);
+  return `
+    <div class="progress-block">
+      <div class="progress-info">
+        <span class="progress-label">${title}${sub ? ` · ${sub}` : ''}</span>
+        <span class="progress-pct">${p}%</span>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" style="width: ${p}%"></div></div>
+    </div>
+  `;
+}
+
+function resultHTML(originalSize, finalSize) {
+  if (!originalSize || !finalSize) return '';
+  const reduction = ((1 - finalSize / originalSize) * 100).toFixed(0);
+  const sign = finalSize < originalSize ? '−' : '+';
+  return `
+    <div class="progress-block progress-done">
+      <div class="progress-info">
+        <span class="progress-label">listo para subir</span>
+        <span class="progress-pct">${formatSize(originalSize)} → ${formatSize(finalSize)} (${sign}${Math.abs(reduction)}%)</span>
+      </div>
+    </div>
+  `;
+}
+
+// Único preset: 720p con bitrate fijo. Balance calidad/peso para 2 min ≈ 28 MB.
+// Con CRF 10 y cap a 2000 kbps, las escenas estáticas pesan aún menos.
+const PRESET_720 = {
+  label: '720p',
+  maxWidth: 1280, maxHeight: 720,
+  crf: 10,
+  videoBitrate: '2000k',
+  audioBitrate: '128k',
+  cpuUsed: 4,
+  fps: null,
 };
 
-const MAX_FILE_SIZE = 100 * 1024 * 1024;       // 100 MB
+const MAX_FILE_SIZE = 500 * 1024 * 1024;       // 500 MB (input antes de comprimir)
+const MAX_COMPRESSED_SIZE = 95 * 1024 * 1024;   // 95 MB (límite duro del Worker es 100 MB)
 const MAX_DURATION = 5 * 60;                    // 5 minutos
 const WORKERFS_THRESHOLD = 200 * 1024 * 1024;   // 200 MB
 const CORE_MT_BASE = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core-mt@0.12.9/dist/umd';
@@ -62,11 +169,25 @@ export function initUpload({ legendPeopleMap: legend, onUpload }) {
     selectedPeople = [];
     newPeopleCreated = {};
     compressedBlob = null;
+    thumbnailBlob = null;
     renderSelectedPeople();
-    resetCompressionUI();
+    setStatus('idle');
     hideVideoError();
-    document.getElementById('presetField').hidden = true;
     document.getElementById('uploadDate').value = new Date().toISOString().split('T')[0];
+
+    // Si el dispositivo no puede comprimir, lo subimos tal cual (raw) y avisamos.
+    const caps = detectCapabilities();
+    useRawUpload = !caps.canCompress;
+    const capWarn = document.getElementById('capabilityWarning');
+    if (capWarn) {
+      if (caps.message) {
+        capWarn.textContent = caps.message;
+        capWarn.dataset.mode = caps.mode;
+        capWarn.hidden = false;
+      } else {
+        capWarn.hidden = true;
+      }
+    }
   });
 
   const closeModal = () => {
@@ -74,9 +195,10 @@ export function initUpload({ legendPeopleMap: legend, onUpload }) {
     uploadForm.reset();
     selectedPeople = [];
     compressedBlob = null;
-    resetCompressionUI();
+    thumbnailBlob = null;
+    setStatus('idle');
     hideVideoError();
-    document.getElementById('presetField').hidden = true;
+    releaseWakeLock();
   };
 
   uploadOverlayClose.addEventListener('click', closeModal);
@@ -87,45 +209,57 @@ export function initUpload({ legendPeopleMap: legend, onUpload }) {
 
   addPersonBtn.addEventListener('click', () => showPersonSelector());
 
+  const compressFlow = async (file, meta) => {
+    compressedBlob = null;
+    thumbnailBlob = null;
+    acquireWakeLock();
+
+    if (useRawUpload) {
+      if (file.size > MAX_COMPRESSED_SIZE) {
+        setStatus('error', {
+          message: `el original pesa ${formatSize(file.size)}, supera el límite del servidor (95 MB) y este navegador no puede comprimir.`
+        });
+        return;
+      }
+      compressedBlob = file;
+      setStatus('thumbnailing');
+      try {
+        thumbnailBlob = await generateThumbnailNative(file, meta);
+      } catch (_) {
+        thumbnailBlob = null;
+      }
+      setStatus('ready', { originalSize: file.size, finalSize: file.size });
+      return;
+    }
+
+    compressedBlob = await compressVideo(file, meta);
+    if (compressedBlob) {
+      setStatus('thumbnailing');
+      thumbnailBlob = await generateThumbnail(file, meta).catch(() => null);
+      setStatus('ready', { originalSize: file.size, finalSize: compressedBlob.size });
+    }
+  };
+
   // Video seleccionado → validar + comprimir
   videoInput.addEventListener('change', async () => {
     const file = videoInput.files[0];
     if (!file) {
-      resetCompressionUI();
+      setStatus('idle');
       hideVideoError();
-      document.getElementById('presetField').hidden = true;
       compressedBlob = null;
+      thumbnailBlob = null;
       return;
     }
 
     const meta = await validateVideo(file);
     if (!meta) {
       compressedBlob = null;
-      document.getElementById('presetField').hidden = true;
+      thumbnailBlob = null;
+      setStatus('idle');
       return;
     }
 
-    document.getElementById('compressionStatus').innerHTML =
-      `<div class="compression-status">${formatSize(file.size)} original</div>`;
-    document.getElementById('presetField').hidden = false;
-
-    compressedBlob = await compressVideo(file, meta);
-  });
-
-  // Preset buttons
-  document.querySelectorAll('.preset-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      selectedPreset = btn.dataset.preset;
-
-      const file = videoInput.files[0];
-      if (file) {
-        compressedBlob = null;
-        const meta = await extractVideoMetadata(file);
-        compressedBlob = await compressVideo(file, meta);
-      }
-    });
+    await compressFlow(file, meta);
   });
 
   // Submit
@@ -142,6 +276,12 @@ export function initUpload({ legendPeopleMap: legend, onUpload }) {
       return;
     }
 
+    if (compressedBlob.size > MAX_COMPRESSED_SIZE) {
+      const mb = (compressedBlob.size / (1024 * 1024)).toFixed(1);
+      alert(`comprimido pesa ${mb} MB, supera el limite del servidor (95 MB). prueba con un preset mas bajo (480p) o un video mas corto.`);
+      return;
+    }
+
     const originalName = videoInput.files[0]?.name || 'video';
     const compressedFile = new File(
       [compressedBlob],
@@ -149,28 +289,33 @@ export function initUpload({ legendPeopleMap: legend, onUpload }) {
       { type: 'video/webm' }
     );
 
+    let authToken = localStorage.getItem(AUTH_STORAGE_KEY) || '';
+    if (!authToken) {
+      authToken = prompt('contraseña de subida') || '';
+      if (!authToken) return;
+      localStorage.setItem(AUTH_STORAGE_KEY, authToken);
+    }
+
     const formData = {
       video: compressedFile,
+      thumbnail: thumbnailBlob,
       title: document.getElementById('uploadTitle').value || 'sin titulo',
+      notes: document.getElementById('uploadNotes')?.value?.trim() || null,
       date: document.getElementById('uploadDate').value,
       people: selectedPeople,
       password: document.getElementById('uploadPassword').value || null,
       newPeople: Object.keys(newPeopleCreated).length ? newPeopleCreated : null,
+      authToken,
     };
 
-    const submitBtn = uploadForm.querySelector('button[type="submit"]');
-    const originalText = submitBtn.textContent;
-    submitBtn.textContent = 'subiendo...';
-    submitBtn.disabled = true;
-
     try {
-      if (onUpload) await onUpload(formData);
+      setStatus('uploading', { percent: 0 });
+      if (onUpload) await onUpload(formData, (percent) => {
+        setStatus('uploading', { percent });
+      });
       closeModal();
     } catch (err) {
-      alert('error al subir: ' + err.message);
-    } finally {
-      submitBtn.textContent = originalText;
-      submitBtn.disabled = false;
+      setStatus('error', { message: 'error al subir: ' + err.message });
     }
   });
 }
@@ -207,7 +352,7 @@ async function validateVideo(file) {
 
   if (file.size > MAX_FILE_SIZE) {
     const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
-    showVideoError(`archivo demasiado grande (${sizeMB} MB). maximo: 100 MB`);
+    showVideoError(`archivo demasiado grande (${sizeMB} MB). maximo: 500 MB`);
     return null;
   }
 
@@ -233,73 +378,138 @@ function hideVideoError() {
   if (el) { el.textContent = ''; el.hidden = true; }
 }
 
-function resetCompressionUI() {
-  const statusEl = document.getElementById('compressionStatus');
-  if (statusEl) statusEl.innerHTML = '';
-}
 
 // ─── FFmpeg compression ───────────────────────────────────────
 
-async function toBlobURL(url, mimeType) {
+async function toBlobURL(url, mimeType, onProgress) {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Failed to fetch ${url}: ${response.status}`);
-  const buffer = await response.arrayBuffer();
-  const blob = new Blob([buffer], { type: mimeType });
-  return URL.createObjectURL(blob);
+
+  if (!onProgress || !response.body) {
+    const buffer = await response.arrayBuffer();
+    return URL.createObjectURL(new Blob([buffer], { type: mimeType }));
+  }
+
+  const total = parseInt(response.headers.get('Content-Length') || '0', 10);
+  const reader = response.body.getReader();
+  const chunks = [];
+  let received = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.length;
+    if (total > 0) onProgress(received / total, received, total);
+  }
+  return URL.createObjectURL(new Blob(chunks, { type: mimeType }));
 }
 
 async function loadFFmpeg() {
   if (ffmpegLoaded || ffmpegLoading) return;
   ffmpegLoading = true;
 
-  const statusEl = document.getElementById('compressionStatus');
-  if (statusEl) {
-    statusEl.innerHTML = '<div class="compression-status">cargando ffmpeg (~31 MB)...</div>';
+  // FFmpeg WASM requiere SharedArrayBuffer (multi-thread) para funcionar
+  // fiablemente en Safari iOS. La versión single-thread cuelga en .load() ahí.
+  // El coi-serviceworker.js activa SAB tras un reload inicial.
+  if (typeof SharedArrayBuffer === 'undefined' || !self.crossOriginIsolated) {
+    ffmpegLoading = false;
+    setStatus('error', {
+      message: 'recarga la página para activar el compresor. si persiste, usa "sin comprimir".'
+    });
+    return;
   }
 
+  // Pesos para la barra
+  const W_JS = 150 * 1024;
+  const W_WASM = 32 * 1024 * 1024;
+  const W_WORKER = 30 * 1024;
+  const W_INIT = 4 * 1024 * 1024;
+  const TOTAL = W_JS + W_WASM + W_WORKER + W_INIT;
+  let received = 0;
+
+  const showProgress = (label, currentBytes = received) => {
+    const pct = Math.min(99, Math.round((currentBytes / TOTAL) * 100));
+    setStatus('loading-ffmpeg', { label, percent: pct });
+  };
+
   try {
-    if (typeof SharedArrayBuffer === 'undefined') {
-      throw new Error('SharedArrayBuffer no disponible. Recarga la pagina.');
-    }
+    showProgress('descargando compresor (1/3)');
 
     const { FFmpeg } = FFmpegWASM;
     ffmpeg = new FFmpeg();
+    ffmpeg.on('log', ({ message }) => console.log('[ffmpeg]', message));
 
-    await ffmpeg.load({
-      coreURL: await toBlobURL(`${CORE_MT_BASE}/ffmpeg-core.js`, 'text/javascript'),
-      wasmURL: await toBlobURL(`${CORE_MT_BASE}/ffmpeg-core.wasm`, 'application/wasm'),
-      workerURL: await toBlobURL(`${CORE_MT_BASE}/ffmpeg-core.worker.js`, 'text/javascript'),
-    });
+    const coreURL = await toBlobURL(
+      `${CORE_MT_BASE}/ffmpeg-core.js`, 'text/javascript',
+      (_p, got) => showProgress('descargando compresor (1/3)', received + got)
+    );
+    received += W_JS;
 
+    const wasmURL = await toBlobURL(
+      `${CORE_MT_BASE}/ffmpeg-core.wasm`, 'application/wasm',
+      (_p, got, total) => {
+        const mb = (got / 1024 / 1024).toFixed(1);
+        const totalMb = (total / 1024 / 1024).toFixed(0);
+        showProgress(`descargando compresor (2/3) · ${mb}/${totalMb} MB`, received + got);
+      }
+    );
+    received += W_WASM;
+
+    const workerURL = await toBlobURL(
+      `${CORE_MT_BASE}/ffmpeg-core.worker.js`, 'text/javascript',
+      (_p, got) => showProgress('descargando compresor (3/3)', received + got)
+    );
+    received += W_WORKER;
+
+    // ffmpeg.load(): timer visible mientras inicializa
+    const initStart = Date.now();
+    let initInterval = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - initStart) / 1000);
+      const fake = Math.min(W_INIT, (elapsed / 20) * W_INIT);
+      showProgress(`inicializando compresor · ${elapsed}s`, received + fake);
+    }, 250);
+
+    try {
+      await withTimeout(
+        ffmpeg.load({ coreURL, wasmURL, workerURL }),
+        180000,
+        'inicialización'
+      );
+    } finally {
+      clearInterval(initInterval);
+    }
+    received = TOTAL;
     ffmpegLoaded = true;
   } catch (err) {
     console.error('Error loading FFmpeg:', err);
-    if (statusEl) {
-      statusEl.innerHTML = '<div class="compression-status">error al cargar ffmpeg. recarga la pagina.</div>';
-    }
+    setStatus('error', {
+      message: `no se pudo cargar el compresor (${err.message}). prueba "sin comprimir" o recarga la página.`
+    });
     ffmpeg = null;
   } finally {
     ffmpegLoading = false;
   }
 }
 
-async function compressVideo(file, meta) {
-  const statusEl = document.getElementById('compressionStatus');
-  if (!statusEl) return null;
+function withTimeout(promise, ms, label) {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`timeout en ${label} (${ms / 1000}s)`)), ms);
+    promise.then(
+      (v) => { clearTimeout(t); resolve(v); },
+      (e) => { clearTimeout(t); reject(e); }
+    );
+  });
+}
 
+async function compressVideo(file, meta) {
   if (!ffmpegLoaded) {
     await loadFFmpeg();
     if (!ffmpegLoaded) return null;
   }
 
-  const preset = PRESETS[selectedPreset];
-
-  statusEl.innerHTML = `
-    <div class="compression-status">comprimiendo (${preset.label})...</div>
-    <div class="compression-progress">
-      <div class="compression-progress-bar" id="compressionBar"></div>
-    </div>
-  `;
+  const preset = PRESET_720;
+  originalFileSize = file.size;
+  setStatus('compressing', { label: `${preset.label} · ${preset.videoBitrate}`, percent: 0 });
 
   try {
     const ext = file.name.split('.').pop().toLowerCase();
@@ -357,8 +567,8 @@ async function compressVideo(file, meta) {
 
     // Progress
     const progressHandler = ({ progress }) => {
-      const bar = document.getElementById('compressionBar');
-      if (bar) bar.style.width = `${Math.min(Math.round(progress * 100), 99)}%`;
+      const pct = Math.min(Math.round(progress * 100), 99);
+      setStatus('compressing', { label: `${preset.label} · ${preset.videoBitrate}`, percent: pct });
     };
     ffmpeg.on('progress', progressHandler);
 
@@ -378,24 +588,109 @@ async function compressVideo(file, meta) {
       await ffmpeg.deleteFile(outputName);
     } catch (_) {}
 
-    // Show result
-    const reduction = ((1 - blob.size / file.size) * 100).toFixed(0);
-    statusEl.innerHTML = `
-      <div class="compression-result">
-        ${formatSize(file.size)} → ${formatSize(blob.size)} (-${reduction}%)
-      </div>
-    `;
-
     return blob;
 
   } catch (err) {
     console.error('Compression error:', err);
-    statusEl.innerHTML = `
-      <div class="compression-status">
-        error al comprimir. prueba con un video mas corto o usa
-        <a href="https://handbrake.fr" target="_blank" rel="noopener" style="color:#000;text-decoration:underline">handbrake</a>
-      </div>
-    `;
+    setStatus('error', { message: 'error al comprimir. prueba con un video más corto o un preset más bajo.' });
+    return null;
+  }
+}
+
+// ─── Thumbnail nativo (canvas, sin FFmpeg) ────────────────────
+
+function generateThumbnailNative(file, meta) {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    video.preload = 'auto';
+    video.muted = true;
+    video.playsInline = true;
+    video.crossOrigin = 'anonymous';
+    const url = URL.createObjectURL(file);
+    video.src = url;
+
+    const cleanup = () => {
+      URL.revokeObjectURL(url);
+      video.removeAttribute('src');
+    };
+
+    const onSeeked = () => {
+      try {
+        const targetW = 480;
+        const ar = video.videoWidth / video.videoHeight;
+        const w = targetW;
+        const h = Math.round(targetW / ar);
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, w, h);
+        canvas.toBlob(
+          (blob) => {
+            cleanup();
+            blob ? resolve(blob) : reject(new Error('toBlob failed'));
+          },
+          'image/jpeg',
+          0.78
+        );
+      } catch (e) {
+        cleanup();
+        reject(e);
+      }
+    };
+
+    video.addEventListener('loadedmetadata', () => {
+      const t = meta.duration > 2 ? 1 : 0;
+      video.currentTime = t;
+    }, { once: true });
+    video.addEventListener('seeked', onSeeked, { once: true });
+    video.addEventListener('error', () => { cleanup(); reject(new Error('video load failed')); }, { once: true });
+  });
+}
+
+// ─── Thumbnail generation (FFmpeg) ────────────────────────────
+
+async function generateThumbnail(file, meta) {
+  if (!ffmpegLoaded) return null;
+
+  const ext = file.name.split('.').pop().toLowerCase();
+  const inputName = `thumb_input.${ext}`;
+  const outputName = 'thumb.jpg';
+
+  try {
+    const buf = await file.arrayBuffer();
+    await ffmpeg.writeFile(inputName, new Uint8Array(buf));
+
+    const seekTime = meta.duration > 2 ? '00:00:01' : '00:00:00';
+    const targetW = 480;
+    const ar = meta.width && meta.height ? meta.width / meta.height : 16 / 9;
+    let nw = targetW;
+    let nh = Math.round(targetW / ar);
+    nh = nh % 2 === 0 ? nh : nh - 1;
+
+    const args = [
+      '-ss', seekTime,
+      '-i', inputName,
+      '-vframes', '1',
+      '-vf', `scale=${nw}:${nh}`,
+      '-q:v', '3',
+      outputName,
+    ];
+
+    const exitCode = await ffmpeg.exec(args);
+    if (exitCode !== 0) return null;
+
+    const data = await ffmpeg.readFile(outputName);
+    const blob = new Blob([data.buffer], { type: 'image/jpeg' });
+
+    try {
+      await ffmpeg.deleteFile(inputName);
+      await ffmpeg.deleteFile(outputName);
+    } catch (_) {}
+
+    return blob;
+  } catch (err) {
+    console.error('Thumbnail error:', err);
     return null;
   }
 }
@@ -571,19 +866,40 @@ function renderSelectedPeople() {
 
 // ─── Upload handler ───────────────────────────────────────────
 
-export async function handleUpload(formData) {
-  const body = new FormData();
-  body.append('video', formData.video);
-  body.append('title', formData.title);
-  body.append('date', formData.date);
-  body.append('people', JSON.stringify(formData.people));
-  if (formData.password) body.append('password', formData.password);
-  if (formData.newPeople) body.append('newPeople', JSON.stringify(formData.newPeople));
+export function handleUpload(formData, onProgress) {
+  return new Promise((resolve, reject) => {
+    const body = new FormData();
+    body.append('video', formData.video);
+    if (formData.thumbnail) body.append('thumbnail', formData.thumbnail, 'thumb.jpg');
+    body.append('title', formData.title);
+    if (formData.notes) body.append('notes', formData.notes);
+    body.append('date', formData.date);
+    body.append('people', JSON.stringify(formData.people));
+    if (formData.password) body.append('password', formData.password);
+    if (formData.newPeople) body.append('newPeople', JSON.stringify(formData.newPeople));
+    if (formData.authToken) body.append('auth_token', formData.authToken);
 
-  const res = await fetch('/api/upload', { method: 'POST', body });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: 'upload failed' }));
-    throw new Error(err.error || 'upload failed');
-  }
-  return res.json();
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/upload');
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try { resolve(JSON.parse(xhr.responseText)); }
+        catch (_) { resolve({ ok: true }); }
+      } else {
+        if (xhr.status === 401) localStorage.removeItem(AUTH_STORAGE_KEY);
+        let msg = 'upload failed';
+        try { msg = JSON.parse(xhr.responseText).error || msg; } catch (_) {}
+        reject(new Error(msg));
+      }
+    };
+    xhr.onerror = () => reject(new Error('error de red'));
+    xhr.send(body);
+  });
 }
