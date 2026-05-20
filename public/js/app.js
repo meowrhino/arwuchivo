@@ -193,7 +193,8 @@ function createVideoElement(item, position) {
   }
 
   div.addEventListener('click', () => {
-    if (item.password) {
+    // Soporta formato nuevo (hasPassword) y legacy (password)
+    if (item.hasPassword || item.password) {
       showPasswordPrompt(item);
     } else {
       showVideoFullscreen(item);
@@ -204,7 +205,19 @@ function createVideoElement(item, position) {
   return div;
 }
 
-function showVideoFullscreen(item) {
+async function sha256hex(str) {
+  const data = new TextEncoder().encode(str);
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  return [...new Uint8Array(hash)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function withAccessHash(url, hash) {
+  if (!hash) return url;
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}p=${hash}`;
+}
+
+function showVideoFullscreen(item, accessHash = null) {
   const overlay = document.getElementById('videoOverlay');
   const body = document.getElementById('videoOverlayBody');
 
@@ -213,11 +226,11 @@ function showVideoFullscreen(item) {
   body.innerHTML = '';
 
   const video = document.createElement('video');
-  video.src = item.src;
+  video.src = withAccessHash(item.src, accessHash);
   video.controls = true;
   video.autoplay = true;
   video.playsInline = true;
-  if (item.thumb) video.poster = item.thumb;
+  if (item.thumb) video.poster = withAccessHash(item.thumb, accessHash);
 
   body.appendChild(video);
 
@@ -239,7 +252,43 @@ function showVideoFullscreen(item) {
     body.appendChild(meta);
   }
 
+  // Botón borrar: visible solo si hay token de subida (señal de que el usuario
+  // tiene permisos). El Worker re-valida vía auth_token al ejecutar.
+  const authToken = localStorage.getItem('arwuchivo_auth_token');
+  if (authToken && item.id && item.date) {
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.className = 'video-overlay-delete';
+    delBtn.textContent = 'borrar';
+    delBtn.addEventListener('click', () => deleteVideo(item, authToken));
+    body.appendChild(delBtn);
+  }
+
   overlay.hidden = false;
+}
+
+async function deleteVideo(item, authToken) {
+  if (!confirm(`¿borrar "${item.title || 'este video'}"? esto no se puede deshacer.`)) return;
+  try {
+    const body = new FormData();
+    body.append('id', item.id);
+    body.append('dayKey', item.date);
+    body.append('auth_token', authToken);
+    const res = await fetch('/api/delete', { method: 'POST', body });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'error' }));
+      if (res.status === 401) localStorage.removeItem('arwuchivo_auth_token');
+      alert('no se pudo borrar: ' + (err.error || res.status));
+      return;
+    }
+    // Recargar datos y vista
+    document.getElementById('videoOverlay').hidden = true;
+    indexData = await loadIndex();
+    renderLegend();
+    await loadAndRenderMonth(currentMonth);
+  } catch (e) {
+    alert('error de red al borrar');
+  }
 }
 
 function initVideoOverlay() {
@@ -278,12 +327,28 @@ function showPasswordPrompt(item) {
   input.focus();
   errorEl.hidden = true;
 
-  const handleSubmit = () => {
-    if (input.value === item.password) {
+  const handleSubmit = async () => {
+    // Legacy: si el item tenía password en plano (uploads viejos), el Worker
+    // ya no gatea el archivo. Aceptamos el match local como fallback.
+    if (item.password && input.value === item.password) {
       overlay.hidden = true;
       showVideoFullscreen(item);
-    } else {
-      errorEl.textContent = 'password incorrecto';
+      return;
+    }
+
+    // Nuevo: hasheamos el input y pedimos al Worker que valide.
+    const hash = await sha256hex(input.value);
+    try {
+      const res = await fetch(withAccessHash(item.src, hash), { method: 'HEAD' });
+      if (res.ok) {
+        overlay.hidden = true;
+        showVideoFullscreen(item, hash);
+      } else {
+        errorEl.textContent = 'password incorrecto';
+        errorEl.hidden = false;
+      }
+    } catch {
+      errorEl.textContent = 'error al verificar';
       errorEl.hidden = false;
     }
   };

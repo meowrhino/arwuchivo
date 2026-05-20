@@ -467,6 +467,27 @@ body {
   line-height: 1.5;
 }
 
+.video-overlay-delete {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: lowercase;
+  cursor: pointer;
+  margin-top: 8px;
+  padding: 4px 8px;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  transition: color 0.2s var(--ease-out), text-decoration-color 0.2s var(--ease-out);
+}
+.video-overlay-delete:hover {
+  color: #d32f2f;
+  text-decoration-color: currentColor;
+}
+
 /* ============================================
    MODAL DE PASSWORD
    ============================================ */
