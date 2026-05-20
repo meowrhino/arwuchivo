@@ -14,14 +14,21 @@
   --text-muted: #999;
   --border: #f0f0f0;
   --overlay-bg: rgba(255, 255, 255, 0.96);
+  --accent: #ffa726;          /* color cálido cohesionado con el loader */
+  --accent-soft: #ffd54a;
+  --shadow-soft: 0 4px 18px rgba(0, 0, 0, 0.08);
   --header-h: 6dvh;
+  --timeline-h: 28px;
   --upload-btn-size: 40px;
   --radius: 0px;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 html, body {
-  height: 100%;
-  overflow: hidden;
+  width: 100%;
+  min-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 body {
@@ -63,6 +70,25 @@ body {
   text-transform: lowercase;
   letter-spacing: 0.06em;
   font-family: inherit;
+  position: relative;
+  transition: color 0.2s var(--ease-out), transform 0.2s var(--ease-out);
+}
+.date-btn::after {
+  content: '';
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 1.5px;
+  background: var(--accent);
+  transition: width 0.25s var(--ease-out);
+}
+.date-btn:hover {
+  color: var(--accent);
+}
+.date-btn:hover::after {
+  width: calc(100% - 24px);
 }
 
 /* ============================================
@@ -70,12 +96,60 @@ body {
    ============================================ */
 
 .canvas {
+  position: relative;
+  width: 100%;
+  margin-top: calc(var(--header-h) + var(--timeline-h));
+  min-height: calc(100dvh - var(--header-h) - var(--timeline-h));
+  overflow: visible;
+}
+
+.timeline {
   position: fixed;
   top: var(--header-h);
   left: 0;
   right: 0;
-  bottom: 0;
-  overflow: hidden;
+  height: var(--timeline-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 12px;
+  background: var(--bg);
+  z-index: 99;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.timeline::-webkit-scrollbar { display: none; }
+
+.day-dot {
+  appearance: none;
+  border: none;
+  padding: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e8e8e8;
+  cursor: default;
+  flex: 0 0 auto;
+  transition: transform 0.2s var(--ease-out), background 0.2s var(--ease-out);
+}
+.day-dot.is-active {
+  cursor: pointer;
+}
+.day-dot.is-active:hover {
+  transform: scale(1.6);
+}
+.day-dot.is-selected {
+  width: 10px;
+  height: 10px;
+  outline: 1.5px solid var(--accent);
+  outline-offset: 3px;
+  animation: dot-pulse 2s ease-in-out infinite;
+}
+
+@keyframes dot-pulse {
+  0%, 100% { outline-color: var(--accent); }
+  50%      { outline-color: var(--accent-soft); }
 }
 
 .empty {
@@ -96,16 +170,19 @@ body {
 .video-item {
   position: absolute;
   cursor: pointer;
-  transition: transform 0.15s ease, opacity 0.15s ease;
+  transition: transform 0.25s var(--ease-out), box-shadow 0.25s var(--ease-out), opacity 0.3s ease;
+  animation: video-enter 0.5s var(--ease-out) backwards;
 }
 
 .video-item:hover {
-  transform: scale(1.02);
+  transform: translateY(-3px) scale(1.025);
+  box-shadow: var(--shadow-soft);
   z-index: 10;
 }
 
 .video-item:active {
-  transform: scale(0.98);
+  transform: translateY(-1px) scale(0.99);
+  transition-duration: 0.1s;
 }
 
 .video-item video {
@@ -115,15 +192,24 @@ body {
   object-fit: cover;
 }
 
-/* barra de color fusion */
+/* barra de color fusion: gradient suave que se desvanece hacia arriba */
 .video-item::after {
   content: '';
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
-  height: 3px;
+  height: 5px;
   background: var(--video-color, #000);
+  transition: height 0.25s var(--ease-out);
+}
+.video-item:hover::after {
+  height: 7px;
+}
+
+@keyframes video-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* ============================================
@@ -132,28 +218,36 @@ body {
 
 .legend {
   position: fixed;
-  bottom: 12px;
-  right: 12px;
-  font-size: 9px;
+  bottom: 14px;
+  right: 14px;
+  font-size: 10px;
   color: var(--text-muted);
   z-index: 50;
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  letter-spacing: 0.06em;
+  gap: 5px;
+  letter-spacing: 0.08em;
 }
 
 .legend-item {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
+  transition: color 0.2s var(--ease-out);
+}
+.legend-item:hover {
+  color: var(--text);
 }
 
 .legend-dot {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
+  transition: transform 0.2s var(--ease-out);
+}
+.legend-item:hover .legend-dot {
+  transform: scale(1.4);
 }
 
 .legend-name {
@@ -180,7 +274,10 @@ body {
   font-weight: 300;
   line-height: 1;
   cursor: pointer;
-  transition: opacity 0.15s ease;
+  transition: transform 0.25s var(--ease-out),
+              border-color 0.25s var(--ease-out),
+              color 0.25s var(--ease-out),
+              box-shadow 0.25s var(--ease-out);
   z-index: 50;
   display: flex;
   align-items: center;
@@ -188,7 +285,13 @@ body {
 }
 
 .upload-btn:hover {
-  opacity: 0.6;
+  transform: scale(1.08) rotate(90deg);
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: var(--shadow-soft);
+}
+.upload-btn:active {
+  transform: scale(0.96) rotate(90deg);
 }
 
 /* ============================================
@@ -333,14 +436,35 @@ body {
   width: 100%;
   height: 100%;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: 16px;
+  gap: 12px;
 }
 
 .video-overlay-body video {
   max-width: 100%;
-  max-height: 100%;
+  max-height: calc(100% - 80px);
+}
+
+.video-overlay-meta {
+  width: min(640px, 92%);
+  text-align: center;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--text);
+}
+
+.video-overlay-title {
+  font-weight: 400;
+  margin-bottom: 6px;
+}
+
+.video-overlay-notes {
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  line-height: 1.5;
 }
 
 /* ============================================
@@ -530,7 +654,8 @@ body {
 
 .form-field input[type="text"],
 .form-field input[type="password"],
-.form-field input[type="date"] {
+.form-field input[type="date"],
+.form-field textarea {
   width: 100%;
   padding: 8px 0;
   border: none;
@@ -543,7 +668,14 @@ body {
   letter-spacing: 0.04em;
 }
 
-.form-field input:focus {
+.form-field textarea {
+  resize: vertical;
+  min-height: 48px;
+  line-height: 1.4;
+}
+
+.form-field input:focus,
+.form-field textarea:focus {
   outline: none;
   border-bottom-color: var(--text);
 }
@@ -568,26 +700,107 @@ body {
   margin-left: 8px;
 }
 
-/* compresion progress */
-.compression-status {
-  font-size: 11px;
-  color: var(--text-muted);
+/* Progress block: una sola barra grande, simple, estilo imgToWeb */
+.progress-block {
+  margin: 8px 0;
+}
+
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 6px;
+  font-size: 12px;
   letter-spacing: 0.04em;
-  padding: 4px 0;
+  color: var(--text);
 }
 
-.compression-progress {
+.progress-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.progress-pct {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+}
+
+.progress-bar {
   width: 100%;
-  height: 2px;
-  background: var(--border);
-  margin-top: 4px;
+  height: 8px;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 999px;
+  overflow: hidden;
 }
 
-.compression-progress-bar {
+.progress-fill {
   height: 100%;
-  background: var(--text);
-  transition: width 0.3s ease;
+  background: linear-gradient(90deg, #ffd54a, #ffa726);
+  transition: width 0.25s ease;
   width: 0%;
+  border-radius: 999px;
+}
+
+/* Barra indeterminada: bloque que oscila de izquierda a derecha.
+   Se usa cuando no se puede medir progreso (ffmpeg.load, miniatura). */
+.progress-fill.indeterminate {
+  width: 40%;
+  background: linear-gradient(90deg, transparent 0%, #ffd54a 30%, #ffa726 70%, transparent 100%);
+  animation: progress-indeterminate 1.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  border-radius: 999px;
+}
+
+@keyframes progress-indeterminate {
+  0%   { transform: translateX(-100%); }
+  50%  { transform: translateX(150%); }
+  100% { transform: translateX(150%); }
+}
+
+.progress-done .progress-pct {
+  color: #2e7d32;
+}
+
+/* Error card (cuando algo falla del todo) */
+.status-card.status-error {
+  margin: 8px 0;
+  padding: 12px;
+  background: #fdf3f3;
+  border-left: 2px solid #d32f2f;
+  font-size: 12px;
+  color: var(--text);
+  letter-spacing: 0.04em;
+  line-height: 1.45;
+}
+
+.status-warning {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: #fff8e1;
+  border-left: 2px solid #f4b400;
+  font-size: 11px;
+  color: var(--text);
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+}
+
+.capability-warning {
+  margin: 0 0 16px 0;
+  padding: 10px 12px;
+  background: #fff8e1;
+  border-left: 2px solid #f4b400;
+  font-size: 12px;
+  color: var(--text);
+  letter-spacing: 0.04em;
+  line-height: 1.45;
+}
+.capability-warning[data-mode="no-wasm"] {
+  background: #fdf3f3;
+  border-left-color: #d32f2f;
 }
 
 .compression-result {
@@ -794,18 +1007,20 @@ body {
 
 .preset-buttons {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
 .preset-btn {
-  flex: 1;
+  flex: 1 1 70px;
+  min-width: 70px;
   appearance: none;
   border: none;
   background: transparent;
   color: var(--text-muted);
   font-size: 11px;
   font-weight: 300;
-  padding: 8px 0;
+  padding: 8px 4px;
   cursor: pointer;
   font-family: inherit;
   letter-spacing: 0.04em;
@@ -959,7 +1174,57 @@ body {
 
 @media (max-width: 480px) {
   .upload-btn {
-    --upload-btn-size: 36px;
-    font-size: 18px;
+    --upload-btn-size: 48px;
+    font-size: 22px;
+  }
+
+  /* iOS evita zoom si el input es >= 16px */
+  .form-field input[type="text"],
+  .form-field input[type="password"],
+  .form-field input[type="date"],
+  .form-field textarea,
+  .password-form input {
+    font-size: 16px;
+  }
+
+  /* Modal de subida ocupa toda la pantalla en móvil */
+  .upload-overlay {
+    padding: 0;
+    align-items: stretch;
+  }
+  .upload-overlay-inner {
+    width: 100%;
+    max-height: 100dvh;
+    height: 100dvh;
+    padding: 24px 18px 32px;
+    padding-top: max(24px, env(safe-area-inset-top));
+    padding-bottom: max(32px, env(safe-area-inset-bottom));
+  }
+  .upload-overlay-close {
+    width: 40px;
+    height: 40px;
+    font-size: 22px;
+    top: 6px;
+    right: 6px;
+  }
+  .upload-overlay-inner h2 {
+    font-size: 16px;
+    margin-bottom: 20px;
+  }
+
+  /* Más espacio entre campos y botones más grandes en móvil */
+  .form-field {
+    margin-bottom: 18px;
+  }
+  .form-actions button,
+  .preset-btn,
+  .add-person-btn,
+  .person-option,
+  .new-person-trigger {
+    min-height: 44px;
+    font-size: 14px;
+  }
+  .preset-buttons {
+    gap: 8px;
   }
 }

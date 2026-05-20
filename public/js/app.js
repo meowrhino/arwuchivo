@@ -319,6 +319,7 @@ function navigateToMonth(monthStr) {
   url.searchParams.delete('d');
   window.history.pushState({}, '', url);
 
+  renderLegend();
   loadAndRenderMonth(monthStr);
 }
 
@@ -338,6 +339,7 @@ function navigateToDay(dayStr) {
     url.searchParams.delete('m');
     window.history.pushState({}, '', url);
   }
+  renderLegend();
   loadAndRenderMonth(currentMonth);
 }
 
@@ -374,7 +376,22 @@ function renderLegend() {
   const legendEl = document.getElementById('legend');
   if (!legendEl || !legendPeopleMap) return;
 
-  const people = Object.keys(legendPeopleMap);
+  // Solo gente que aparece en el mes/día visible. Si no hay nada cargado,
+  // muestro toda la leyenda (fallback al estado inicial).
+  let people;
+  if (currentMonth && indexData?.days) {
+    const daysInScope = currentDay
+      ? indexData.days.filter(d => d.d === currentDay)
+      : indexData.days.filter(d => d.d.startsWith(currentMonth));
+    const set = new Set();
+    for (const d of daysInScope) {
+      (d.people || []).forEach(p => set.add(p));
+    }
+    people = [...set];
+  } else {
+    people = Object.keys(legendPeopleMap);
+  }
+
   if (people.length === 0) {
     legendEl.innerHTML = '';
     return;

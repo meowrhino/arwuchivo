@@ -86,9 +86,9 @@ function setStatus(state, extra = {}) {
 
   const cfg = {
     'idle':            { html: '', btn: 'subir', disabled: true },
-    'loading-ffmpeg':  { html: progressHTML('preparando compresor', extra.label, extra.percent), btn: `preparando ${extra.percent ?? 0}%`, disabled: true },
+    'loading-ffmpeg':  { html: progressHTML('preparando compresor', extra.label, extra.percent, extra.indeterminate), btn: extra.indeterminate ? 'preparando…' : `preparando ${extra.percent ?? 0}%`, disabled: true },
     'compressing':     { html: progressHTML('comprimiendo video', extra.label, extra.percent), btn: `comprimiendo ${extra.percent ?? 0}%`, disabled: true },
-    'thumbnailing':    { html: progressHTML('generando miniatura', null, 95), btn: 'casi listo...', disabled: true },
+    'thumbnailing':    { html: progressHTML('generando miniatura', null, null, true), btn: 'casi listo…', disabled: true },
     'ready':           { html: resultHTML(extra.originalSize, extra.finalSize), btn: 'subir', disabled: false },
     'uploading':       { html: progressHTML('subiendo a la nube', null, extra.percent), btn: `subiendo ${extra.percent ?? 0}%`, disabled: true },
     'error':           { html: `<div class="status-card status-error">${extra.message || 'error'}</div>`, btn: 'subir', disabled: false },
@@ -104,15 +104,19 @@ function setStatus(state, extra = {}) {
   submitBtn.disabled = cfg.disabled;
 }
 
-function progressHTML(title, sub, percent) {
+function progressHTML(title, sub, percent, indeterminate = false) {
   const p = Math.min(Math.max(percent ?? 0, 0), 100);
+  const pctText = indeterminate ? '' : `<span class="progress-pct">${p}%</span>`;
+  const fill = indeterminate
+    ? `<div class="progress-fill indeterminate"></div>`
+    : `<div class="progress-fill" style="width: ${p}%"></div>`;
   return `
     <div class="progress-block">
       <div class="progress-info">
         <span class="progress-label">${title}${sub ? ` · ${sub}` : ''}</span>
-        <span class="progress-pct">${p}%</span>
+        ${pctText}
       </div>
-      <div class="progress-bar"><div class="progress-fill" style="width: ${p}%"></div></div>
+      <div class="progress-bar">${fill}</div>
     </div>
   `;
 }
@@ -419,12 +423,11 @@ async function loadFFmpeg() {
     return;
   }
 
-  // Pesos para la barra
+  // Pesos para la barra (solo fase de descarga; init usa barra indeterminada)
   const W_JS = 150 * 1024;
   const W_WASM = 32 * 1024 * 1024;
   const W_WORKER = 30 * 1024;
-  const W_INIT = 4 * 1024 * 1024;
-  const TOTAL = W_JS + W_WASM + W_WORKER + W_INIT;
+  const TOTAL = W_JS + W_WASM + W_WORKER;
   let received = 0;
 
   const showProgress = (label, currentBytes = received) => {
@@ -461,12 +464,15 @@ async function loadFFmpeg() {
     );
     received += W_WORKER;
 
-    // ffmpeg.load(): timer visible mientras inicializa
+    // ffmpeg.load(): no podemos saber el % real, así que mostramos
+    // un timer + barra animada (indeterminada).
     const initStart = Date.now();
     let initInterval = setInterval(() => {
       const elapsed = Math.floor((Date.now() - initStart) / 1000);
-      const fake = Math.min(W_INIT, (elapsed / 20) * W_INIT);
-      showProgress(`inicializando compresor · ${elapsed}s`, received + fake);
+      setStatus('loading-ffmpeg', {
+        label: `inicializando compresor · ${elapsed}s`,
+        indeterminate: true,
+      });
     }, 250);
 
     try {
