@@ -26,6 +26,10 @@ const ALLOWED_ORIGINS = new Set([
 ]);
 const DEFAULT_ORIGIN = 'https://arwuchivo.meowrhino.studio';
 
+const SESSION_COOKIE = 'arwuchivo_session';
+const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 días
+const ROBOTS_TAG = 'noindex, nofollow, noarchive, nosnippet, noimageindex';
+
 function mimeFromPath(path) {
   const ext = path.split('.').pop().toLowerCase();
   return MIME[ext] || 'application/octet-stream';
@@ -41,28 +45,53 @@ export default {
       return new Response(null, { headers: corsHeaders(origin) });
     }
 
+    // Rutas siempre públicas (no necesitan sesión)
+    if (path === '/robots.txt') {
+      return robotsResponse();
+    }
+    if (path === '/login' && request.method === 'GET') {
+      return loginPageResponse();
+    }
+    if (path === '/api/login' && request.method === 'POST') {
+      return await handleLogin(request, env, url);
+    }
+    if (path === '/api/logout' && request.method === 'POST') {
+      return handleLogout(url);
+    }
+
+    // Gate: todo lo demás requiere cookie de sesión válida.
+    // Si no, GET → redirige a /login; cualquier otro método → 401 JSON.
+    const authed = await isAuthenticated(request, env);
+    if (!authed) {
+      if (request.method === 'GET') {
+        return Response.redirect(new URL('/login', request.url).toString(), 302);
+      }
+      return finalize(jsonResponse({ error: 'no autorizado' }, 401), origin);
+    }
+
     if (path === '/api/upload' && request.method === 'POST') {
-      return withCors(await handleUpload(request, env), origin);
+      return finalize(await handleUpload(request, env), origin);
     }
 
     if (path === '/api/delete' && request.method === 'POST') {
-      return withCors(await handleDelete(request, env), origin);
+      return finalize(await handleDelete(request, env), origin);
     }
 
     if (path.startsWith('/data/')) {
       // Nada bajo /data/private/ se sirve nunca (reservado para passwords/etc).
       if (path.startsWith('/data/private/')) {
-        return withCors(new Response('Not found', { status: 404 }), origin);
+        return finalize(new Response('Not found', { status: 404 }), origin);
       }
-      return withCors(await serveDataFromR2(env.STORAGE, path.slice(1)), origin);
+      return finalize(await serveDataFromR2(env.STORAGE, path.slice(1)), origin);
     }
 
     if (path.startsWith('/videos/')) {
-      return withCors(await serveVideoFromR2(env.STORAGE, path.slice(1), request), origin);
+      return finalize(await serveVideoFromR2(env.STORAGE, path.slice(1), request), origin);
     }
 
     // SAB/crossOriginIsolated is enabled by public/coi-serviceworker.js
-    return env.ASSETS.fetch(request);
+    const assetRes = await env.ASSETS.fetch(request);
+    return finalize(assetRes, origin);
   }
 };
 
@@ -74,12 +103,8 @@ async function handleUpload(request, env) {
   try {
     const form = await request.formData();
 
-    // Auth
-    const authToken = form.get('auth_token') || '';
-    const expected = env.UPLOAD_PASSWORD || '';
-    if (!expected || authToken !== expected) {
-      return jsonResponse({ error: 'no autorizado' }, 401);
-    }
+    // Auth: la cookie de sesión ya validó al cliente en el gate de fetch().
+    // No requerimos auth_token adicional.
 
     const video    = form.get('video');
     const thumbnail = form.get('thumbnail');
@@ -236,11 +261,7 @@ async function handleDelete(request, env) {
   try {
     const form = await request.formData();
 
-    const authToken = form.get('auth_token') || '';
-    const expected = env.UPLOAD_PASSWORD || '';
-    if (!expected || authToken !== expected) {
-      return jsonResponse({ error: 'no autorizado' }, 401);
-    }
+    // Auth: la cookie de sesión ya validó al cliente en el gate de fetch().
 
     const id = form.get('id') || '';
     const dayKey = form.get('dayKey') || '';
@@ -448,9 +469,188 @@ function withCors(response, origin) {
   });
 }
 
+// CORS + X-Robots-Tag en una sola pasada
+function finalize(response, origin) {
+  const headers = new Headers(response.headers);
+  for (const [k, v] of Object.entries(corsHeaders(origin))) {
+    headers.set(k, v);
+  }
+  if (!headers.has('X-Robots-Tag')) {
+    headers.set('X-Robots-Tag', ROBOTS_TAG);
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+// ─── Auth: cookie firmada HMAC ────────────────────────────────
+
+async function hmacHex(key, msg) {
+  const enc = new TextEncoder();
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw', enc.encode(key),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false, ['sign']
+  );
+  const sig = await crypto.subtle.sign('HMAC', cryptoKey, enc.encode(msg));
+  return [...new Uint8Array(sig)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function constantTimeEq(a, b) {
+  if (a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < a.length; i++) mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return mismatch === 0;
+}
+
+function getCookie(request, name) {
+  const cookie = request.headers.get('Cookie') || '';
+  const m = cookie.match(new RegExp('(?:^|;\\s*)' + name + '=([^;]+)'));
+  return m ? m[1] : '';
+}
+
+async function makeSessionValue(env) {
+  const expiry = Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS;
+  const msg = String(expiry);
+  const sig = await hmacHex(env.UPLOAD_PASSWORD || '', msg);
+  return `${msg}.${sig}`;
+}
+
+async function verifySessionValue(value, env) {
+  if (!value || !env.UPLOAD_PASSWORD) return false;
+  const dot = value.indexOf('.');
+  if (dot <= 0) return false;
+  const expiryStr = value.slice(0, dot);
+  const sig = value.slice(dot + 1);
+  const expiry = parseInt(expiryStr, 10);
+  if (!Number.isFinite(expiry) || expiry < Math.floor(Date.now() / 1000)) return false;
+  const expected = await hmacHex(env.UPLOAD_PASSWORD, expiryStr);
+  return constantTimeEq(expected, sig);
+}
+
+async function isAuthenticated(request, env) {
+  return await verifySessionValue(getCookie(request, SESSION_COOKIE), env);
+}
+
+function sessionCookieAttrs(url) {
+  const secure = url.protocol === 'https:' ? 'Secure; ' : '';
+  return `HttpOnly; ${secure}SameSite=Lax; Path=/; Max-Age=${SESSION_TTL_SECONDS}`;
+}
+
+// ─── Login / Logout ───────────────────────────────────────────
+
+function loginPageResponse(error = '') {
+  const safeErr = error.replace(/[<>&"']/g, c => ({
+    '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;','\'':'&#39;'
+  }[c]));
+  const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex" />
+<meta name="referrer" content="no-referrer" />
+<title>arwuchivo</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;background:#fff;color:#000}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;font-weight:300;letter-spacing:0.04em;display:flex;align-items:center;justify-content:center;padding:24px}
+  form{display:flex;flex-direction:column;gap:14px;width:min(280px,90vw)}
+  h1{font-weight:300;font-size:13px;letter-spacing:0.08em;text-transform:lowercase;text-align:center;margin-bottom:4px}
+  label{text-transform:lowercase;letter-spacing:0.06em;color:#666;font-size:12px}
+  input{appearance:none;border:none;border-bottom:1px solid #000;padding:8px 0;font-family:inherit;font-size:13px;background:transparent;letter-spacing:0.06em;outline:none;color:#000}
+  input:focus{border-bottom-color:#ffa726}
+  button{appearance:none;border:1px solid #000;background:#000;color:#fff;padding:10px 14px;font-family:inherit;font-size:13px;letter-spacing:0.06em;text-transform:lowercase;cursor:pointer;margin-top:4px;transition:background .15s,color .15s}
+  button:hover{background:#fff;color:#000}
+  .err{color:#c33;font-size:12px;min-height:1em;text-align:center}
+</style>
+</head>
+<body>
+<form method="POST" action="/api/login" autocomplete="off">
+  <h1>arwuchivo</h1>
+  <label for="password">password</label>
+  <input id="password" name="password" type="password" autofocus required />
+  <button type="submit">entrar</button>
+  <div class="err">${safeErr}</div>
+</form>
+</body>
+</html>`;
+  return new Response(html, {
+    status: error ? 401 : 200,
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'X-Robots-Tag': ROBOTS_TAG,
+      'Referrer-Policy': 'no-referrer',
+    },
+  });
+}
+
+async function handleLogin(request, env, url) {
+  const form = await request.formData().catch(() => null);
+  const password = form?.get('password') || '';
+  const expected = env.UPLOAD_PASSWORD || '';
+  if (!expected || password !== expected) {
+    // pequeño delay para frenar fuerza bruta básica
+    await new Promise(r => setTimeout(r, 400));
+    return loginPageResponse('contraseña incorrecta');
+  }
+  const value = await makeSessionValue(env);
+  return new Response(null, {
+    status: 303,
+    headers: {
+      'Location': '/',
+      'Set-Cookie': `${SESSION_COOKIE}=${value}; ${sessionCookieAttrs(url)}`,
+      'Cache-Control': 'no-store',
+      'X-Robots-Tag': ROBOTS_TAG,
+    },
+  });
+}
+
+function handleLogout(url) {
+  const secure = url.protocol === 'https:' ? 'Secure; ' : '';
+  return new Response(null, {
+    status: 303,
+    headers: {
+      'Location': '/login',
+      'Set-Cookie': `${SESSION_COOKIE}=; HttpOnly; ${secure}SameSite=Lax; Path=/; Max-Age=0`,
+      'Cache-Control': 'no-store',
+      'X-Robots-Tag': ROBOTS_TAG,
+    },
+  });
+}
+
+// ─── robots.txt ───────────────────────────────────────────────
+
+function robotsResponse() {
+  const bots = [
+    'GPTBot', 'ChatGPT-User', 'OAI-SearchBot',
+    'ClaudeBot', 'anthropic-ai', 'Claude-Web',
+    'Google-Extended', 'CCBot', 'PerplexityBot',
+    'Bytespider', 'Amazonbot', 'meta-externalagent',
+    'cohere-ai', 'Applebot-Extended', 'FacebookBot',
+    'Diffbot', 'ImagesiftBot', 'omgili',
+  ];
+  const lines = ['User-agent: *', 'Disallow: /', ''];
+  for (const b of bots) {
+    lines.push(`User-agent: ${b}`, 'Disallow: /');
+  }
+  lines.push('');
+  return new Response(lines.join('\n'), {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'X-Robots-Tag': ROBOTS_TAG,
+      'Cache-Control': 'public, max-age=3600',
+    },
   });
 }

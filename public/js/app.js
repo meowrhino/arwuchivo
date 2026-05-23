@@ -252,32 +252,33 @@ function showVideoFullscreen(item, accessHash = null) {
     body.appendChild(meta);
   }
 
-  // Botón borrar: visible solo si hay token de subida (señal de que el usuario
-  // tiene permisos). El Worker re-valida vía auth_token al ejecutar.
-  const authToken = localStorage.getItem('arwuchivo_auth_token');
-  if (authToken && item.id && item.date) {
+  // Si llegaste aquí estás autenticado por cookie (gate del Worker), así que
+  // siempre mostramos el botón de borrar.
+  if (item.id && item.date) {
     const delBtn = document.createElement('button');
     delBtn.type = 'button';
     delBtn.className = 'video-overlay-delete';
     delBtn.textContent = 'borrar';
-    delBtn.addEventListener('click', () => deleteVideo(item, authToken));
+    delBtn.addEventListener('click', () => deleteVideo(item));
     body.appendChild(delBtn);
   }
 
   overlay.hidden = false;
 }
 
-async function deleteVideo(item, authToken) {
+async function deleteVideo(item) {
   if (!confirm(`¿borrar "${item.title || 'este video'}"? esto no se puede deshacer.`)) return;
   try {
     const body = new FormData();
     body.append('id', item.id);
     body.append('dayKey', item.date);
-    body.append('auth_token', authToken);
     const res = await fetch('/api/delete', { method: 'POST', body });
     if (!res.ok) {
+      if (res.status === 401) {
+        window.location.href = '/login';
+        return;
+      }
       const err = await res.json().catch(() => ({ error: 'error' }));
-      if (res.status === 401) localStorage.removeItem('arwuchivo_auth_token');
       alert('no se pudo borrar: ' + (err.error || res.status));
       return;
     }

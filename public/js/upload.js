@@ -20,8 +20,6 @@ let originalFileSize = 0;
 let currentStatus = 'idle'; // idle | loading-ffmpeg | compressing | thumbnailing | ready | uploading | error
 let wakeLock = null;
 
-const AUTH_STORAGE_KEY = 'arwuchivo_auth_token';
-
 // ─── Detección de capacidades del navegador ───────────────────
 
 function detectCapabilities() {
@@ -293,13 +291,6 @@ export function initUpload({ legendPeopleMap: legend, onUpload }) {
       { type: 'video/webm' }
     );
 
-    let authToken = localStorage.getItem(AUTH_STORAGE_KEY) || '';
-    if (!authToken) {
-      authToken = prompt('contraseña de subida') || '';
-      if (!authToken) return;
-      localStorage.setItem(AUTH_STORAGE_KEY, authToken);
-    }
-
     const formData = {
       video: compressedFile,
       thumbnail: thumbnailBlob,
@@ -309,7 +300,6 @@ export function initUpload({ legendPeopleMap: legend, onUpload }) {
       people: selectedPeople,
       password: document.getElementById('uploadPassword').value || null,
       newPeople: Object.keys(newPeopleCreated).length ? newPeopleCreated : null,
-      authToken,
     };
 
     try {
@@ -883,7 +873,6 @@ export function handleUpload(formData, onProgress) {
     body.append('people', JSON.stringify(formData.people));
     if (formData.password) body.append('password', formData.password);
     if (formData.newPeople) body.append('newPeople', JSON.stringify(formData.newPeople));
-    if (formData.authToken) body.append('auth_token', formData.authToken);
 
     const xhr = new XMLHttpRequest();
     xhr.open('POST', '/api/upload');
@@ -899,7 +888,11 @@ export function handleUpload(formData, onProgress) {
         try { resolve(JSON.parse(xhr.responseText)); }
         catch (_) { resolve({ ok: true }); }
       } else {
-        if (xhr.status === 401) localStorage.removeItem(AUTH_STORAGE_KEY);
+        if (xhr.status === 401) {
+          // sesión expirada → vuelve al login
+          window.location.href = '/login';
+          return;
+        }
         let msg = 'upload failed';
         try { msg = JSON.parse(xhr.responseText).error || msg; } catch (_) {}
         reject(new Error(msg));
