@@ -1249,3 +1249,94 @@ body {
     gap: 8px;
   }
 }
+
+/* ============================================
+   FILTRO POR PERSONA (leyenda clicable)
+   ============================================ */
+
+.legend-item {
+  cursor: pointer;
+}
+
+.legend-item.active {
+  color: var(--text);
+}
+.legend-item.active .legend-dot {
+  transform: scale(1.4);
+}
+.legend-item.active .legend-name {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--accent);
+}
+
+.video-item.dimmed {
+  opacity: 0.12;
+  pointer-events: none;
+}
+
+/* ============================================
+   BOTON GRABAR (upload)
+   ============================================ */
+
+.video-source-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.video-source-row input[type="file"] {
+  flex: 1;
+  min-width: 0;
+}
+
+.record-btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  padding: 6px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.2s var(--ease-out), color 0.2s var(--ease-out);
+}
+.record-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Solo tiene sentido en dispositivos con cámara (táctiles) */
+@media (hover: hover) and (pointer: fine) {
+  .record-btn { display: none; }
+}
+
+/* ============================================
+   DARK MODE
+   ============================================ */
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e0e0e;
+    --text: #f0f0f0;
+    --text-muted: #777;
+    --border: #262626;
+    --overlay-bg: rgba(14, 14, 14, 0.96);
+    --shadow-soft: 0 4px 18px rgba(0, 0, 0, 0.5);
+  }
+
+  /* puntos vacíos del timeline y tarjetas de estado con fondos claros */
+  .day-dot {
+    background: #2a2a2a;
+  }
+  .status-warning,
+  .capability-warning {
+    background: #1f1a10;
+  }
+  .status-card.status-error,
+  .capability-warning[data-mode="no-wasm"] {
+    background: #1f1212;
+  }
+}

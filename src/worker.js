@@ -469,7 +469,9 @@ function withCors(response, origin) {
   });
 }
 
-// CORS + X-Robots-Tag en una sola pasada
+// CORS + X-Robots-Tag + aislamiento cross-origin en una sola pasada.
+// COOP/COEP activan SharedArrayBuffer (ffmpeg.wasm multi-thread) desde la
+// primera carga, sin necesitar el coi-serviceworker ni recargar la página.
 function finalize(response, origin) {
   const headers = new Headers(response.headers);
   for (const [k, v] of Object.entries(corsHeaders(origin))) {
@@ -478,6 +480,8 @@ function finalize(response, origin) {
   if (!headers.has('X-Robots-Tag')) {
     headers.set('X-Robots-Tag', ROBOTS_TAG);
   }
+  headers.set('Cross-Origin-Opener-Policy', 'same-origin');
+  headers.set('Cross-Origin-Embedder-Policy', 'require-corp');
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,

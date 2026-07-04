@@ -4,6 +4,7 @@
  */
 
 import { resolvePersonColor, HTML_COLOR_HEX } from './colors.js';
+import { addPendingUpload } from './queue.js';
 
 let selectedPeople = [];
 let legendPeopleMap = {};
@@ -38,7 +39,7 @@ function detectCapabilities() {
   if (!hasSAB) {
     return {
       mode: 'no-sab',
-      message: 'recarga la página una vez para activar el compresor. si no, se intentará subir sin comprimir (≤ 95 MB).',
+      message: 'este navegador no soporta el compresor. el video se subirá sin comprimir (≤ 95 MB).',
       canCompress: false,
     };
   }
@@ -163,8 +164,22 @@ export function initUpload({ legendPeopleMap: legend, onUpload }) {
   const uploadForm = document.getElementById('uploadForm');
   const addPersonBtn = document.getElementById('addPersonBtn');
   const videoInput = document.getElementById('uploadVideo');
+  const captureInput = document.getElementById('uploadVideoCapture');
+  const recordBtn = document.getElementById('recordBtn');
 
   if (!uploadBtn || !uploadOverlay || !uploadForm) return;
+
+  // "grabar": abre la cámara directamente (input con capture) y pasa el
+  // archivo al input principal para reutilizar validación + compresión.
+  if (recordBtn && captureInput) {
+    recordBtn.addEventListener('click', () => captureInput.click());
+    captureInput.addEventListener('change', () => {
+      if (!captureInput.files.length) return;
+      videoInput.files = captureInput.files;
+      captureInput.value = '';
+      videoInput.dispatchEvent(new Event('change'));
+    });
+  }
 
   uploadBtn.addEventListener('click', () => {
     uploadOverlay.hidden = false;
@@ -284,12 +299,16 @@ export function initUpload({ legendPeopleMap: legend, onUpload }) {
       return;
     }
 
+    // En modo raw compressedBlob ES el File original: no lo renombramos a
+    // .webm ni le cambiamos el content-type (se subiría un mp4 disfrazado).
     const originalName = videoInput.files[0]?.name || 'video';
-    const compressedFile = new File(
-      [compressedBlob],
-      originalName.replace(/\.[^.]+$/, '.webm'),
-      { type: 'video/webm' }
-    );
+    const compressedFile = useRawUpload
+      ? compressedBlob
+      : new File(
+          [compressedBlob],
+          originalName.replace(/\.[^.]+$/, '.webm'),
+          { type: 'video/webm' }
+        );
 
     const formData = {
       video: compressedFile,
@@ -309,6 +328,15 @@ export function initUpload({ legendPeopleMap: legend, onUpload }) {
       });
       closeModal();
     } catch (err) {
+      // Sin red: guardamos en IndexedDB y se subirá al recuperar conexión
+      if (err.message === 'error de red' || !navigator.onLine) {
+        try {
+          await addPendingUpload(formData);
+          alert('sin conexión: el video queda guardado en este dispositivo y se subirá automáticamente al recuperar red.');
+          closeModal();
+          return;
+        } catch (_) { /* IndexedDB falló: mostramos el error normal */ }
+      }
       setStatus('error', { message: 'error al subir: ' + err.message });
     }
   });
@@ -408,7 +436,7 @@ async function loadFFmpeg() {
   if (typeof SharedArrayBuffer === 'undefined' || !self.crossOriginIsolated) {
     ffmpegLoading = false;
     setStatus('error', {
-      message: 'recarga la página para activar el compresor. si persiste, usa "sin comprimir".'
+      message: 'este navegador no puede usar el compresor. sube un video que pese ≤ 95 MB.'
     });
     return;
   }

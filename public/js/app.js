@@ -9,12 +9,31 @@ import { generateRandomLayout, calculateAverageVideoSize, calculateCanvasHeight 
 import { initSeasonMenu, updateDateButton } from './seasonMenu.js';
 import { initUpload, handleUpload } from './upload.js';
 import { renderTimeline } from './timeline.js';
+import { flushPendingUploads } from './queue.js';
 
 let currentMonth = null;
 let currentDay = null;  // YY-MM-DD when filtering, else null
 let indexData = null;
 let legendData = null;
 let legendPeopleMap = {};
+let activePersonFilter = null;  // nombre de persona al filtrar desde la leyenda
+
+// Preview automático: hover en desktop, IntersectionObserver en táctil
+const hoverCapable = window.matchMedia('(hover: hover)').matches;
+let previewObserver = null;
+
+function getPreviewObserver() {
+  if (previewObserver) return previewObserver;
+  previewObserver = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      const video = entry.target.querySelector('video');
+      if (!video) continue;
+      if (entry.isIntersecting) video.play().catch(() => {});
+      else video.pause();
+    }
+  }, { threshold: 0.6 });
+  return previewObserver;
+}
 
 async function init() {
   try {
@@ -48,8 +67,8 @@ async function init() {
 
     initUpload({
       legendPeopleMap,
-      onUpload: async (formData) => {
-        await handleUpload(formData);
+      onUpload: async (formData, onProgress) => {
+        await handleUpload(formData, onProgress);
         // Refresh: reload index, legend, and re-render current month
         indexData = await loadIndex();
         legendData = await loadLegend();
@@ -66,6 +85,7 @@ async function init() {
     await loadAndRenderMonth(currentMonth);
     initVideoOverlay();
     initPasswordOverlay();
+    initOfflineQueue();
 
   } catch (error) {
     console.error('Error initializing app:', error);
@@ -129,6 +149,8 @@ function renderCanvas(items) {
 
   if (emptyEl) emptyEl.hidden = true;
 
+  if (previewObserver) previewObserver.disconnect();
+
   const containerSize = {
     width: canvas.clientWidth || window.innerWidth || document.documentElement.clientWidth || 360,
     height: (window.innerHeight || 640) * 0.94
@@ -142,7 +164,19 @@ function renderCanvas(items) {
   items.forEach((item, index) => {
     const pos = positions[index];
     const videoEl = createVideoElement(item, pos);
+    // Aparición escalonada: cada video entra un poco después que el anterior
+    videoEl.style.animationDelay = `${Math.min(index * 60, 800)}ms`;
     canvas.appendChild(videoEl);
+  });
+
+  applyPersonFilter();
+}
+
+function applyPersonFilter() {
+  document.querySelectorAll('.video-item').forEach((el) => {
+    const people = (el.dataset.people || '').split('|');
+    const dimmed = !!activePersonFilter && !people.includes(activePersonFilter);
+    el.classList.toggle('dimmed', dimmed);
   });
 }
 
@@ -158,6 +192,8 @@ function createVideoElement(item, position) {
   div.style.height = `${position.height}px`;
   div.style.setProperty('--video-color', gradient);
   div.dataset.itemId = item.id;
+  div.dataset.people = (Array.isArray(item.person) ? item.person : [item.person])
+    .filter(Boolean).join('|');
 
   const video = document.createElement('video');
   video.src = item.src;
@@ -200,6 +236,14 @@ function createVideoElement(item, position) {
       showVideoFullscreen(item);
     }
   });
+
+  // Preview: hover en desktop; en táctil se reproduce el que está en pantalla
+  if (hoverCapable) {
+    div.addEventListener('mouseenter', () => video.play().catch(() => {}));
+    div.addEventListener('mouseleave', () => video.pause());
+  } else {
+    getPreviewObserver().observe(div);
+  }
 
   div.appendChild(video);
   return div;
@@ -314,25 +358,47 @@ function initVideoOverlay() {
   });
 }
 
+// Item pendiente de validar; los listeners viven en initPasswordOverlay
+// (registrados una sola vez) para poder reintentar tras un fallo.
+let passwordPromptItem = null;
+
 function showPasswordPrompt(item) {
   const overlay = document.getElementById('passwordOverlay');
+  const input = document.getElementById('passwordInput');
+  const errorEl = document.getElementById('passwordError');
+
+  if (!overlay || !input) return;
+
+  passwordPromptItem = item;
+  overlay.hidden = false;
+  input.value = '';
+  input.focus();
+  errorEl.hidden = true;
+}
+
+function initPasswordOverlay() {
+  const overlay = document.getElementById('passwordOverlay');
+  const closeBtn = document.getElementById('passwordOverlayClose');
   const input = document.getElementById('passwordInput');
   const submitBtn = document.getElementById('passwordSubmit');
   const cancelBtn = document.getElementById('passwordCancel');
   const errorEl = document.getElementById('passwordError');
 
-  if (!overlay || !input || !submitBtn) return;
+  if (!overlay || !closeBtn || !input || !submitBtn) return;
 
-  overlay.hidden = false;
-  input.value = '';
-  input.focus();
-  errorEl.hidden = true;
+  const close = () => {
+    overlay.hidden = true;
+    passwordPromptItem = null;
+  };
 
   const handleSubmit = async () => {
+    const item = passwordPromptItem;
+    if (!item) return;
+
     // Legacy: si el item tenía password en plano (uploads viejos), el Worker
     // ya no gatea el archivo. Aceptamos el match local como fallback.
     if (item.password && input.value === item.password) {
-      overlay.hidden = true;
+      close();
       showVideoFullscreen(item);
       return;
     }
@@ -342,7 +408,7 @@ function showPasswordPrompt(item) {
     try {
       const res = await fetch(withAccessHash(item.src, hash), { method: 'HEAD' });
       if (res.ok) {
-        overlay.hidden = true;
+        close();
         showVideoFullscreen(item, hash);
       } else {
         errorEl.textContent = 'password incorrecto';
@@ -354,30 +420,21 @@ function showPasswordPrompt(item) {
     }
   };
 
-  submitBtn.addEventListener('click', handleSubmit, { once: true });
+  submitBtn.addEventListener('click', handleSubmit);
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') handleSubmit();
-  }, { once: true });
-  cancelBtn.addEventListener('click', () => {
-    overlay.hidden = true;
-  }, { once: true });
-}
-
-function initPasswordOverlay() {
-  const overlay = document.getElementById('passwordOverlay');
-  const closeBtn = document.getElementById('passwordOverlayClose');
-
-  if (!overlay || !closeBtn) return;
-
-  closeBtn.addEventListener('click', () => { overlay.hidden = true; });
+  });
+  cancelBtn.addEventListener('click', close);
+  closeBtn.addEventListener('click', close);
   overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) overlay.hidden = true;
+    if (e.target === overlay) close();
   });
 }
 
 function navigateToMonth(monthStr) {
   currentMonth = monthStr;
   currentDay = null;
+  activePersonFilter = null;
   updateDateButton(monthStr);
 
   const url = new URL(window.location);
@@ -463,10 +520,16 @@ function renderLegend() {
     return;
   }
 
+  // Si la persona filtrada ya no está en el mes visible, soltamos el filtro
+  if (activePersonFilter && !people.includes(activePersonFilter)) {
+    activePersonFilter = null;
+  }
+
   const html = people.map(name => {
     const { color } = resolvePersonColor(name, legendPeopleMap);
+    const active = name === activePersonFilter ? ' active' : '';
     return `
-      <div class="legend-item">
+      <div class="legend-item${active}" data-name="${name}" role="button" tabindex="0">
         <span class="legend-dot" style="background: ${color}"></span>
         <span class="legend-name">${name.toLowerCase()}</span>
       </div>
@@ -474,6 +537,44 @@ function renderLegend() {
   }).join('');
 
   legendEl.innerHTML = html;
+
+  // Clic en una persona: filtra el canvas (toggle)
+  legendEl.querySelectorAll('.legend-item').forEach((el) => {
+    el.addEventListener('click', () => {
+      const name = el.dataset.name;
+      activePersonFilter = activePersonFilter === name ? null : name;
+      legendEl.querySelectorAll('.legend-item').forEach((it) => {
+        it.classList.toggle('active', it.dataset.name === activePersonFilter);
+      });
+      applyPersonFilter();
+    });
+  });
+}
+
+// ─── Cola offline ─────────────────────────────────────────────
+
+async function refreshAfterUploads() {
+  indexData = await loadIndex();
+  legendData = await loadLegend();
+  legendPeopleMap = legendData?.people || {};
+  renderLegend();
+  await loadAndRenderMonth(currentMonth);
+}
+
+function initOfflineQueue() {
+  const flush = async () => {
+    try {
+      const uploaded = await flushPendingUploads(handleUpload);
+      if (uploaded > 0) {
+        console.log(`cola offline: ${uploaded} video(s) subidos`);
+        await refreshAfterUploads();
+      }
+    } catch (e) {
+      console.warn('cola offline:', e);
+    }
+  };
+  window.addEventListener('online', flush);
+  flush();
 }
 
 init().then(() => {
