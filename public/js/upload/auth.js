@@ -1,58 +1,18 @@
 /**
  * upload/auth.js
- * Auth token (UPLOAD_PASSWORD) persistido en localStorage. Si no existe,
- * se pide vía modal limpio (no `prompt()` nativo). Si el Worker devuelve 401,
- * lo borramos y volvemos a pedir.
+ * Con el gate de sesión del Worker ya no hay password por separado para
+ * escribir: si esta página se está ejecutando es que hay cookie válida, y la
+ * cookie viaja sola en cada fetch del mismo origen.
+ *
+ * Lo único que queda por resolver aquí es qué hacer cuando la sesión caduca
+ * a mitad de camino: el Worker responde 401 y volvemos al login.
  */
 
-export const AUTH_STORAGE_KEY = 'arwuchivo_auth_token';
-
-export function ensureAuthToken() {
-  const existing = localStorage.getItem(AUTH_STORAGE_KEY);
-  if (existing) return Promise.resolve(existing);
-  return promptAuthToken();
+export function handleUnauthorized() {
+  window.location.href = '/login';
 }
 
-export function promptAuthToken(errorMsg = null) {
-  return new Promise((resolve) => {
-    const overlay = document.getElementById('authOverlay');
-    const input = document.getElementById('authInput');
-    const submit = document.getElementById('authSubmit');
-    const cancel = document.getElementById('authCancel');
-    const closeBtn = document.getElementById('authOverlayClose');
-    const errorEl = document.getElementById('authError');
-    if (!overlay || !input || !submit) {
-      resolve(null);
-      return;
-    }
-
-    input.value = '';
-    errorEl.hidden = !errorMsg;
-    if (errorMsg) errorEl.textContent = errorMsg;
-    overlay.hidden = false;
-    setTimeout(() => input.focus(), 50);
-
-    const cleanup = (val) => {
-      overlay.hidden = true;
-      submit.onclick = null;
-      cancel.onclick = null;
-      closeBtn.onclick = null;
-      input.onkeydown = null;
-      resolve(val);
-    };
-
-    submit.onclick = () => {
-      const val = input.value.trim();
-      if (!val) return;
-      localStorage.setItem(AUTH_STORAGE_KEY, val);
-      cleanup(val);
-    };
-    cancel.onclick = () => cleanup(null);
-    closeBtn.onclick = () => cleanup(null);
-    input.onkeydown = (e) => { if (e.key === 'Enter') submit.click(); };
-  });
-}
-
-export function clearAuth() {
-  localStorage.removeItem(AUTH_STORAGE_KEY);
+/** true siempre que la app esté cargada; útil para mostrar controles de edición. */
+export function isAuthed() {
+  return true;
 }

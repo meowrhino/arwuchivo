@@ -3,7 +3,6 @@
  */
 
 import { jsonResponse } from '../http.js';
-import { requireAuth } from '../auth.js';
 import { updateJsonAtomic } from '../r2-helpers.js';
 import { VALID_PERSON } from '../constants.js';
 
@@ -11,9 +10,7 @@ export async function handlePeopleSave(request, env) {
   try {
     const form = await request.formData();
 
-    const authErr = requireAuth(request, env, form);
-    if (authErr) return jsonResponse({ error: authErr.error }, authErr.status);
-
+    // Auth: el gate de sesión del router ya validó la cookie.
     let people;
     try { people = JSON.parse(form.get('people') || '{}'); }
     catch { return jsonResponse({ error: 'people inválido' }, 400); }
@@ -80,9 +77,7 @@ export async function handlePeopleDelete(request, env) {
   try {
     const form = await request.formData();
 
-    const authErr = requireAuth(request, env, form);
-    if (authErr) return jsonResponse({ error: authErr.error }, authErr.status);
-
+    // Auth: el gate de sesión del router ya validó la cookie.
     const name = form.get('name') || '';
     if (!VALID_PERSON.test(name)) return jsonResponse({ error: 'nombre inválido' }, 400);
 

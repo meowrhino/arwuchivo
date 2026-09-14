@@ -2,7 +2,7 @@
  * upload.js
  * Orquestador del modal de subida. La lógica vive en upload/.
  *
- * - upload/auth.js          - auth token (UPLOAD_PASSWORD) persistido
+ * - upload/auth.js          - qué hacer si el Worker responde 401
  * - upload/wizard.js        - navegación entre los 4 pasos
  * - upload/status.js        - estado visual de compresión/subida
  * - upload/personSelector.js - selector de personas dentro del wizard
@@ -16,7 +16,8 @@ import {
   compressVideo, generateThumbnail, generateThumbnailNative,
 } from './compressor.js';
 
-import { ensureAuthToken, promptAuthToken, AUTH_STORAGE_KEY, clearAuth } from './upload/auth.js';
+import { handleUnauthorized } from './upload/auth.js';
+import { addPendingUpload } from './queue.js';
 import { setStatus } from './upload/status.js';
 import { goToStep, validateStep, TOTAL_STEPS } from './upload/wizard.js';
 import { showPersonSelector, showNewPersonInline } from './upload/personSelector.js';
@@ -35,9 +36,6 @@ let currentStep = 1;
 const MAX_FILE_SIZE = 500 * 1024 * 1024;
 const MAX_COMPRESSED_SIZE = 95 * 1024 * 1024;
 const MAX_DURATION = 5 * 60;
-
-// Re-export para que app.js pueda usar ensureAuthToken
-export { ensureAuthToken };
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' &&
@@ -65,10 +63,24 @@ export function initUpload({ legendPeopleMap: legend, onUpload }) {
   const uploadForm = document.getElementById('uploadForm');
   const addPersonBtn = document.getElementById('addPersonBtn');
   const videoInput = document.getElementById('uploadVideo');
+  const captureInput = document.getElementById('uploadVideoCapture');
+  const recordBtn = document.getElementById('recordBtn');
   const backBtn = document.getElementById('wizardBack');
   const nextBtn = document.getElementById('wizardNext');
 
   if (!uploadBtn || !uploadOverlay || !uploadForm) return;
+
+  // "grabar": abre la cámara directamente (input con capture) y pasa el
+  // archivo al input principal para reutilizar validación + compresión.
+  if (recordBtn && captureInput) {
+    recordBtn.addEventListener('click', () => captureInput.click());
+    captureInput.addEventListener('change', () => {
+      if (!captureInput.files.length) return;
+      videoInput.files = captureInput.files;
+      captureInput.value = '';
+      videoInput.dispatchEvent(new Event('change'));
+    });
+  }
 
   uploadBtn.addEventListener('click', () => {
     selectedPeople = [];
@@ -210,15 +222,16 @@ export function initUpload({ legendPeopleMap: legend, onUpload }) {
       return;
     }
 
+    // En modo raw compressedBlob ES el File original: no lo renombramos a
+    // .webm ni le cambiamos el content-type (se subiría un mp4 disfrazado).
     const originalName = videoInput.files[0]?.name || 'video';
-    const compressedFile = new File(
-      [compressedBlob],
-      originalName.replace(/\.[^.]+$/, '.webm'),
-      { type: 'video/webm' }
-    );
-
-    const authToken = await ensureAuthToken();
-    if (!authToken) return;
+    const compressedFile = useRawUpload
+      ? compressedBlob
+      : new File(
+          [compressedBlob],
+          originalName.replace(/\.[^.]+$/, '.webm'),
+          { type: 'video/webm' }
+        );
 
     const formData = {
       video: compressedFile,
@@ -229,7 +242,6 @@ export function initUpload({ legendPeopleMap: legend, onUpload }) {
       people: selectedPeople,
       password: document.getElementById('uploadPassword').value || null,
       newPeople: Object.keys(newPeopleCreated).length ? newPeopleCreated : null,
-      authToken,
     };
 
     try {
@@ -237,20 +249,19 @@ export function initUpload({ legendPeopleMap: legend, onUpload }) {
       if (onUpload) await onUpload(formData, (percent) => updateStatus('uploading', { percent }));
       closeModal();
     } catch (err) {
+      // Sesión caducada: el gate del Worker nos manda de vuelta al login.
       if (err.message === 'unauthorized') {
-        clearAuth();
-        const fresh = await promptAuthToken('contraseña incorrecta');
-        if (fresh) {
-          formData.authToken = fresh;
-          try {
-            updateStatus('uploading', { percent: 0 });
-            if (onUpload) await onUpload(formData, (percent) => updateStatus('uploading', { percent }));
-            closeModal();
-          } catch (e2) {
-            updateStatus('error', { message: 'error al subir: ' + e2.message });
-          }
+        handleUnauthorized();
+        return;
+      }
+      // Sin red: guardamos en IndexedDB y se subirá al recuperar conexión
+      if (err.message === 'error de red' || !navigator.onLine) {
+        try {
+          await addPendingUpload(formData);
+          alert('sin conexión: el video queda guardado en este dispositivo y se subirá automáticamente al recuperar red.');
+          closeModal();
           return;
-        }
+        } catch (_) { /* IndexedDB falló: mostramos el error normal */ }
       }
       updateStatus('error', { message: 'error al subir: ' + err.message });
     }
@@ -326,7 +337,7 @@ export function handleUpload(formData, onProgress) {
     body.append('people', JSON.stringify(formData.people));
     if (formData.password) body.append('password', formData.password);
     if (formData.newPeople) body.append('newPeople', JSON.stringify(formData.newPeople));
-    if (formData.authToken) body.append('auth_token', formData.authToken);
+    // La autorización va en la cookie de sesión (gate del Worker).
 
     const xhr = new XMLHttpRequest();
     xhr.open('POST', '/api/upload');
@@ -343,7 +354,6 @@ export function handleUpload(formData, onProgress) {
         catch (_) { resolve({ ok: true }); }
       } else {
         if (xhr.status === 401) {
-          clearAuth();
           reject(new Error('unauthorized'));
           return;
         }

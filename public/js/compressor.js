@@ -42,7 +42,7 @@ export function detectCapabilities() {
   if (!hasSAB) {
     return {
       mode: 'no-sab',
-      message: 'recarga la página una vez para activar el compresor. si no, se intentará subir sin comprimir (≤ 95 MB).',
+      message: 'este navegador no soporta el compresor. el video se subirá sin comprimir (≤ 95 MB).',
       canCompress: false,
     };
   }
@@ -118,7 +118,7 @@ export async function loadFFmpeg(onStatus) {
   if (typeof SharedArrayBuffer === 'undefined' || !self.crossOriginIsolated) {
     ffmpegLoading = false;
     onStatus?.('error', {
-      message: 'recarga la página para activar el compresor. si persiste, usa "sin comprimir".'
+      message: 'este navegador no puede usar el compresor. sube un video que pese ≤ 95 MB.'
     });
     return;
   }

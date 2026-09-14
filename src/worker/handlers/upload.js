@@ -3,7 +3,6 @@
  */
 
 import { jsonResponse, mimeFromPath, sha256hex } from '../http.js';
-import { requireAuth } from '../auth.js';
 import { updateJsonAtomic } from '../r2-helpers.js';
 import {
   VALID_DATE, VALID_PERSON, ALLOWED_EXT, MAX_UPLOAD_SIZE,
@@ -15,9 +14,7 @@ export async function handleUpload(request, env) {
   try {
     const form = await request.formData();
 
-    const authErr = requireAuth(request, env, form);
-    if (authErr) return jsonResponse({ error: authErr.error }, authErr.status);
-
+    // Auth: el gate de sesión del router ya validó la cookie.
     const video     = form.get('video');
     const thumbnail = form.get('thumbnail');
     const title     = form.get('title') || 'sin titulo';

@@ -5,7 +5,7 @@
  */
 
 import { resolvePersonColor } from '../colors.js';
-import { ensureAuthToken } from '../upload/auth.js';
+import { handleUnauthorized, isAuthed } from '../upload/auth.js';
 import { openPersonModal } from './personModal.js';
 import { escapeHtml } from './util.js';
 
@@ -23,7 +23,9 @@ export function initPeoplePanel({ legendPeopleMap: legend, onMutate: onMutateCb 
 
   if (!legendBtn || !panel) return;
 
-  legendBtn.addEventListener('click', () => {
+  legendBtn.addEventListener('click', (e) => {
+    // Click sobre un chip de persona = filtrar (lo maneja app.js).
+    if (e.target.closest('.legend-item')) return;
     renderPanel();
     panel.hidden = false;
   });
@@ -54,7 +56,7 @@ function renderPanel() {
   if (!list) return;
 
   const names = Object.keys(legendPeopleMap);
-  const authed = !!localStorage.getItem('arwuchivo_auth_token');
+  const authed = isAuthed();
 
   if (names.length === 0) {
     list.innerHTML = '<div class="empty-people">no hay personas aún</div>';
@@ -100,18 +102,15 @@ function editPerson(name) {
 }
 
 async function deletePerson(name) {
-  const authToken = await ensureAuthToken();
-  if (!authToken) return;
   if (!confirm(`¿borrar a "${name}"? solo se borra de la leyenda, no de los videos.`)) return;
 
   try {
     const body = new FormData();
     body.append('name', name);
-    body.append('auth_token', authToken);
     const res = await fetch('/api/people/delete', { method: 'POST', body });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      if (res.status === 401) localStorage.removeItem('arwuchivo_auth_token');
+      if (res.status === 401) return handleUnauthorized();
       alert('no se pudo borrar: ' + (err.error || res.status));
       return;
     }
@@ -124,18 +123,15 @@ async function deletePerson(name) {
 }
 
 async function persistLegend({ rename = null } = {}) {
-  const authToken = await ensureAuthToken();
-  if (!authToken) return;
 
   try {
     const body = new FormData();
     body.append('people', JSON.stringify(legendPeopleMap));
     if (rename) body.append('rename', JSON.stringify(rename));
-    body.append('auth_token', authToken);
     const res = await fetch('/api/people/save', { method: 'POST', body });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      if (res.status === 401) localStorage.removeItem('arwuchivo_auth_token');
+      if (res.status === 401) return handleUnauthorized();
       alert('no se pudo guardar: ' + (err.error || res.status));
     }
   } catch {

@@ -8,7 +8,11 @@ routes = [
 
 [assets]
 directory = "./public"
+# Binding necesario para que el Worker pueda llamar env.ASSETS.fetch()
+# cuando run_worker_first está activo.
 binding = "ASSETS"
+# El Worker corre ANTES de servir assets para que el gate de sesión
+# se aplique también a /index.html, /style.css, /js/*, etc.
 run_worker_first = true
 
 [[r2_buckets]]

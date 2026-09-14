@@ -1,8 +1,11 @@
 /**
  * auth.js
- * Rate limit por IP para endpoints de escritura.
- * Map persistente en el isolate; se resetea cuando CF lo recicla.
- * No es perfecto pero bloquea brute-force triviales contra UPLOAD_PASSWORD.
+ * Rate limit por IP para el login. El Map vive en el isolate; se resetea
+ * cuando CF lo recicla. No es perfecto, pero frena fuerza bruta trivial
+ * contra UPLOAD_PASSWORD.
+ *
+ * Los endpoints de escritura NO necesitan comprobar nada aquí: el gate de
+ * sesión (gate.js) corre antes que ellos en el router.
  */
 
 const RATE_WINDOW_MS = 5 * 60 * 1000;
@@ -39,23 +42,4 @@ export function recordAuthFailure(request) {
       if (now - v.firstAt > RATE_WINDOW_MS) authFailures.delete(k);
     }
   }
-}
-
-/**
- * Helper: chequea rate-limit + auth_token. Devuelve la respuesta de error
- * si no pasa, o null si todo OK.
- */
-export function requireAuth(request, env, form) {
-  // Importamos jsonResponse aquí para evitar dependencia cíclica
-  // Ya lo importará el caller; este helper solo devuelve booleans/strings.
-  if (!checkRateLimit(request)) {
-    return { error: 'demasiados intentos, espera unos minutos', status: 429 };
-  }
-  const authToken = form.get('auth_token') || '';
-  const expected = env.UPLOAD_PASSWORD || '';
-  if (!expected || authToken !== expected) {
-    recordAuthFailure(request);
-    return { error: 'no autorizado', status: 401 };
-  }
-  return null;
 }

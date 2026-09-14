@@ -5,7 +5,7 @@
  */
 
 import { resolvePersonColor } from '../colors.js';
-import { ensureAuthToken } from '../upload/auth.js';
+import { handleUnauthorized } from '../upload/auth.js';
 import { escapeHtml } from './util.js';
 
 let editTarget = null;
@@ -39,8 +39,6 @@ export function initEditOverlay({ legendPeopleMap: legend, onSaved: onSavedCb })
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!editTarget) return;
-    const authToken = await ensureAuthToken();
-    if (!authToken) return;
 
     try {
       const body = new FormData();
@@ -50,11 +48,10 @@ export function initEditOverlay({ legendPeopleMap: legend, onSaved: onSavedCb })
       body.append('notes', document.getElementById('editNotes').value || '');
       body.append('people', JSON.stringify(editSelectedPeople));
       body.append('password', document.getElementById('editPassword').value || '');
-      body.append('auth_token', authToken);
       const res = await fetch('/api/edit', { method: 'POST', body });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        if (res.status === 401) localStorage.removeItem('arwuchivo_auth_token');
+        if (res.status === 401) return handleUnauthorized();
         alert('no se pudo guardar: ' + (err.error || res.status));
         return;
       }

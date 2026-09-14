@@ -5,6 +5,11 @@
  */
 
 import { withAccessHash, sha256hex } from './util.js';
+import { handleUnauthorized } from '../upload/auth.js';
+
+// Item pendiente de validar; los listeners del modal se registran una sola vez
+// en initPasswordOverlay para poder reintentar tras un fallo.
+let passwordPrompt = null;
 
 export function initVideoOverlay() {
   const overlay = document.getElementById('videoOverlay');
@@ -29,21 +34,51 @@ export function initVideoOverlay() {
 export function initPasswordOverlay() {
   const overlay = document.getElementById('passwordOverlay');
   const closeBtn = document.getElementById('passwordOverlayClose');
-  if (!overlay || !closeBtn) return;
-  closeBtn.addEventListener('click', () => { overlay.hidden = true; });
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) overlay.hidden = true;
-  });
-}
+  const input = document.getElementById('passwordInput');
+  const submitBtn = document.getElementById('passwordSubmit');
+  const cancelBtn = document.getElementById('passwordCancel');
+  const errorEl = document.getElementById('passwordError');
+  if (!overlay || !closeBtn || !input || !submitBtn) return;
 
-export function initAuthOverlay() {
-  const overlay = document.getElementById('authOverlay');
-  const closeBtn = document.getElementById('authOverlayClose');
-  const cancelBtn = document.getElementById('authCancel');
-  if (!overlay || !closeBtn) return;
-  const close = () => { overlay.hidden = true; };
-  closeBtn.addEventListener('click', close);
+  const close = () => {
+    overlay.hidden = true;
+    passwordPrompt = null;
+  };
+
+  const handleSubmit = async () => {
+    const prompt = passwordPrompt;
+    if (!prompt) return;
+    const { item, onLegacyOk, onHashedOk } = prompt;
+
+    // Legacy: uploads viejos con el password en plano dentro del JSON.
+    if (item.password && input.value === item.password) {
+      close();
+      onLegacyOk();
+      return;
+    }
+
+    const hash = await sha256hex(input.value);
+    try {
+      const res = await fetch(withAccessHash(item.src, hash), { method: 'HEAD' });
+      if (res.ok) {
+        close();
+        onHashedOk(hash);
+      } else {
+        errorEl.textContent = 'password incorrecto';
+        errorEl.hidden = false;
+      }
+    } catch {
+      errorEl.textContent = 'error al verificar';
+      errorEl.hidden = false;
+    }
+  };
+
+  submitBtn.addEventListener('click', handleSubmit);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') handleSubmit();
+  });
   cancelBtn.addEventListener('click', close);
+  closeBtn.addEventListener('click', close);
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) close();
   });
@@ -93,8 +128,9 @@ export function showVideoFullscreen(item, accessHash, { onEdit, onDelete }) {
     body.appendChild(meta);
   }
 
-  const authToken = localStorage.getItem('arwuchivo_auth_token');
-  if (authToken && item.id && item.date) {
+  // Si llegaste aquí estás autenticado por cookie (gate del Worker), así que
+  // siempre mostramos editar/borrar.
+  if (item.id && item.date) {
     const actions = document.createElement('div');
     actions.className = 'video-overlay-actions';
 
@@ -108,7 +144,7 @@ export function showVideoFullscreen(item, accessHash, { onEdit, onDelete }) {
     delBtn.type = 'button';
     delBtn.className = 'video-overlay-delete';
     delBtn.textContent = 'borrar';
-    delBtn.addEventListener('click', () => onDelete(item, authToken));
+    delBtn.addEventListener('click', () => onDelete(item));
 
     actions.appendChild(editBtn);
     actions.appendChild(delBtn);
@@ -121,58 +157,26 @@ export function showVideoFullscreen(item, accessHash, { onEdit, onDelete }) {
 function showPasswordPrompt(item, onLegacyOk, onHashedOk) {
   const overlay = document.getElementById('passwordOverlay');
   const input = document.getElementById('passwordInput');
-  const submitBtn = document.getElementById('passwordSubmit');
-  const cancelBtn = document.getElementById('passwordCancel');
   const errorEl = document.getElementById('passwordError');
-  if (!overlay || !input || !submitBtn) return;
+  if (!overlay || !input) return;
 
+  passwordPrompt = { item, onLegacyOk, onHashedOk };
   overlay.hidden = false;
   input.value = '';
   input.focus();
   errorEl.hidden = true;
-
-  const handleSubmit = async () => {
-    if (item.password && input.value === item.password) {
-      overlay.hidden = true;
-      onLegacyOk();
-      return;
-    }
-    const hash = await sha256hex(input.value);
-    try {
-      const res = await fetch(withAccessHash(item.src, hash), { method: 'HEAD' });
-      if (res.ok) {
-        overlay.hidden = true;
-        onHashedOk(hash);
-      } else {
-        errorEl.textContent = 'password incorrecto';
-        errorEl.hidden = false;
-      }
-    } catch {
-      errorEl.textContent = 'error al verificar';
-      errorEl.hidden = false;
-    }
-  };
-
-  submitBtn.addEventListener('click', handleSubmit, { once: true });
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') handleSubmit();
-  }, { once: true });
-  cancelBtn.addEventListener('click', () => {
-    overlay.hidden = true;
-  }, { once: true });
 }
 
-export async function deleteVideo(item, authToken, { onDone }) {
+export async function deleteVideo(item, { onDone }) {
   if (!confirm(`¿borrar "${item.title || 'este video'}"? esto no se puede deshacer.`)) return;
   try {
     const body = new FormData();
     body.append('id', item.id);
     body.append('dayKey', item.date);
-    body.append('auth_token', authToken);
     const res = await fetch('/api/delete', { method: 'POST', body });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: 'error' }));
-      if (res.status === 401) localStorage.removeItem('arwuchivo_auth_token');
+      if (res.status === 401) return handleUnauthorized();
       alert('no se pudo borrar: ' + (err.error || res.status));
       return;
     }

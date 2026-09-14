@@ -3,7 +3,6 @@
  */
 
 import { jsonResponse, sha256hex } from '../http.js';
-import { requireAuth } from '../auth.js';
 import { updateJsonAtomic } from '../r2-helpers.js';
 import { VALID_DAYKEY, VALID_ITEM_ID, VALID_PERSON } from '../constants.js';
 
@@ -11,9 +10,7 @@ export async function handleEdit(request, env) {
   try {
     const form = await request.formData();
 
-    const authErr = requireAuth(request, env, form);
-    if (authErr) return jsonResponse({ error: authErr.error }, authErr.status);
-
+    // Auth: el gate de sesión del router ya validó la cookie.
     const id = form.get('id') || '';
     const dayKey = form.get('dayKey') || '';
     if (!VALID_DAYKEY.test(dayKey)) return jsonResponse({ error: 'dayKey inválido' }, 400);

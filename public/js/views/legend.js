@@ -7,7 +7,7 @@
 import { resolvePersonColor } from '../colors.js';
 import { escapeHtml } from './util.js';
 
-export function renderLegend({ items, legendPeopleMap }) {
+export function renderLegend({ items, legendPeopleMap, activePerson = null }) {
   const legendEl = document.getElementById('legend');
   if (!legendEl || !legendPeopleMap) return;
 
@@ -31,9 +31,10 @@ export function renderLegend({ items, legendPeopleMap }) {
     const { color } = resolvePersonColor(name, legendPeopleMap);
     const count = counts.get(name) || 0;
     const countHtml = count > 0 ? `<span class="legend-count">${count}</span>` : '';
+    const isActive = activePerson === name;
     // Orden DOM con row-reverse: visual queda "nombre · count · dot"
     return `
-      <span class="legend-item">
+      <span class="legend-item${isActive ? ' active' : ''}" data-person="${escapeHtml(name)}">
         <span class="legend-dot" style="background: ${color}"></span>
         ${countHtml}
         <span class="legend-name">${escapeHtml(name.toLowerCase())}</span>

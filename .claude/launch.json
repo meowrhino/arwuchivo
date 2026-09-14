@@ -6,6 +6,13 @@
       "runtimeExecutable": "npx",
       "runtimeArgs": ["wrangler", "dev", "--remote"],
       "port": 8787
+    },
+    {
+      "name": "arwuchivo-local",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["wrangler", "dev", "--port", "8788"],
+      "port": 8788,
+      "autoPort": false
     }
   ]
 }

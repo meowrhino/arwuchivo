@@ -16,10 +16,11 @@
 import { loadIndex, loadDayData, loadLegend } from './data.js';
 import { initSeasonMenu, updateDateButton } from './seasonMenu.js';
 import { initUpload, handleUpload } from './upload.js';
+import { flushPendingUploads } from './queue.js';
 
 import { renderCanvas } from './views/canvas.js';
 import { renderLegend } from './views/legend.js';
-import { initVideoOverlay, initPasswordOverlay, initAuthOverlay, openVideo, deleteVideo } from './views/videoView.js';
+import { initVideoOverlay, initPasswordOverlay, openVideo, deleteVideo } from './views/videoView.js';
 import { initEditOverlay, openEditOverlay, updateLegendMap as updateEditLegend } from './views/videoEdit.js';
 import { initPeoplePanel, updateLegendMap as updatePanelLegend } from './views/peoplePanel.js';
 
@@ -29,6 +30,7 @@ let indexData = null;
 let legendData = null;
 let legendPeopleMap = {};
 let currentItems = [];
+let activePersonFilter = null;  // nombre de persona al filtrar desde la leyenda
 
 async function init() {
   try {
@@ -71,12 +73,13 @@ async function init() {
 
     initVideoOverlay();
     initPasswordOverlay();
-    initAuthOverlay();
 
     initPeoplePanel({
       legendPeopleMap,
       onMutate: () => doRenderLegend(),
     });
+
+    initLegendFilter();
 
     initEditOverlay({
       legendPeopleMap,
@@ -87,6 +90,7 @@ async function init() {
     });
 
     await loadAndRenderMonth(currentMonth);
+    initOfflineQueue();
 
   } catch (error) {
     console.error('Error initializing app:', error);
@@ -128,7 +132,7 @@ async function loadAndRenderMonth(monthStr) {
       legendPeopleMap,
       onItemClick: (item) => openVideo(item, {
         onEdit: openEditOverlay,
-        onDelete: (it, token) => deleteVideo(it, token, {
+        onDelete: (it) => deleteVideo(it, {
           onDone: async () => {
             await reloadDataAndLegend();
             await loadAndRenderMonth(currentMonth);
@@ -137,6 +141,7 @@ async function loadAndRenderMonth(monthStr) {
       }),
     });
 
+    applyPersonFilter();
     doRenderLegend();
 
   } catch (error) {
@@ -149,12 +154,61 @@ function doRenderLegend() {
   let items = currentItems;
   // Si no hay nada cargado aún pero queremos mostrar todas las personas como
   // hint, dejamos que renderLegend caiga al fallback de "todas en leyenda".
-  renderLegend({ items, legendPeopleMap });
+  renderLegend({ items, legendPeopleMap, activePerson: activePersonFilter });
+}
+
+/**
+ * Filtro por persona: click en un chip de la leyenda atenúa el resto de
+ * videos. El click fuera de un chip lo gestiona peoplePanel (abrir panel).
+ */
+function initLegendFilter() {
+  const legendEl = document.getElementById('legend');
+  if (!legendEl) return;
+
+  legendEl.addEventListener('click', (e) => {
+    const chip = e.target.closest('.legend-item');
+    if (!chip) return;
+    e.stopPropagation();
+    const name = chip.dataset.person;
+    activePersonFilter = activePersonFilter === name ? null : name;
+    applyPersonFilter();
+    doRenderLegend();
+  });
+}
+
+function applyPersonFilter() {
+  document.querySelectorAll('.video-item').forEach((el) => {
+    const people = (el.dataset.people || '').split('|');
+    const dimmed = !!activePersonFilter && !people.includes(activePersonFilter);
+    el.classList.toggle('dimmed', dimmed);
+  });
+}
+
+/**
+ * Cola offline: al arrancar y al volver la conexión, reintenta las subidas
+ * que quedaron guardadas en IndexedDB.
+ */
+function initOfflineQueue() {
+  const flush = async () => {
+    try {
+      const uploaded = await flushPendingUploads(handleUpload);
+      if (uploaded > 0) {
+        console.log(`cola offline: ${uploaded} video(s) subidos`);
+        await reloadDataAndLegend();
+        await loadAndRenderMonth(currentMonth);
+      }
+    } catch (e) {
+      console.warn('cola offline:', e);
+    }
+  };
+  window.addEventListener('online', flush);
+  flush();
 }
 
 function navigateToMonth(monthStr) {
   currentMonth = monthStr;
   currentDay = null;
+  activePersonFilter = null;
   updateDateButton(monthStr);
 
   const url = new URL(window.location);
