@@ -1,10 +1,6 @@
 {
   "people": {
-    "Manu": {
-      "color": "Gold"
-    },
-    "Bruno": {
-      "color": "LightGoldenRodYellow"
-    }
+    "Manu": { "color": "Purple" },
+    "Bruno": { "color": "Gold" }
   }
 }

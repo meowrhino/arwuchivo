@@ -4,18 +4,26 @@
     {
       "id": "manu__01",
       "src": "videos/26/01/15/manu__01.mp4",
-      "thumb": null,
+      "thumb": "videos/26/01/15/manu__01.jpg",
       "title": "Entrenamiento 1",
-      "person": ["Manu"],
-      "password": null
+      "notes": null,
+      "person": [
+        "Manu",
+        "Bruno"
+      ],
+      "hasPassword": false
     },
     {
       "id": "manu__02",
       "src": "videos/26/01/15/manu__02.mp4",
-      "thumb": null,
+      "thumb": "videos/26/01/15/manu__02.jpg",
       "title": "Entrenamiento 2",
-      "person": ["Manu"],
-      "password": null
+      "notes": null,
+      "person": [
+        "Manu",
+        "Bruno"
+      ],
+      "hasPassword": false
     }
   ]
 }

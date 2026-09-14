@@ -1,20 +1,34 @@
 /**
  * app.js
- * Orquestador principal - v5.0 fusion minimal
+ * Orquestador principal. Carga datos, inicia las vistas, maneja navegación.
+ * La lógica vive en:
+ *   - views/canvas.js      - render del canvas con los videos
+ *   - views/videoView.js   - overlay fullscreen + delete + password gating
+ *   - views/videoEdit.js   - editar metadata de un video
+ *   - views/peoplePanel.js - gestión de personas (click en leyenda)
+ *   - views/personModal.js - modal nueva/editar persona (compartido)
+ *   - views/legend.js      - leyenda con contadores
+ *   - upload.js            - wizard de subida
+ *   - data.js              - carga de JSON
+ *   - layout.js            - posicionamiento
  */
 
 import { loadIndex, loadDayData, loadLegend } from './data.js';
-import { resolvePersonColor, resolveFusionGradient } from './colors.js';
-import { generateRandomLayout, calculateAverageVideoSize, calculateCanvasHeight } from './layout.js';
 import { initSeasonMenu, updateDateButton } from './seasonMenu.js';
 import { initUpload, handleUpload } from './upload.js';
-import { renderTimeline } from './timeline.js';
+
+import { renderCanvas } from './views/canvas.js';
+import { renderLegend } from './views/legend.js';
+import { initVideoOverlay, initPasswordOverlay, initAuthOverlay, openVideo, deleteVideo } from './views/videoView.js';
+import { initEditOverlay, openEditOverlay, updateLegendMap as updateEditLegend } from './views/videoEdit.js';
+import { initPeoplePanel, updateLegendMap as updatePanelLegend } from './views/peoplePanel.js';
 
 let currentMonth = null;
-let currentDay = null;  // YY-MM-DD when filtering, else null
+let currentDay = null;
 let indexData = null;
 let legendData = null;
 let legendPeopleMap = {};
+let currentItems = [];
 
 async function init() {
   try {
@@ -32,8 +46,6 @@ async function init() {
     } else if (monthParam && indexData.months.includes(monthParam)) {
       currentMonth = monthParam;
     } else {
-      // El más reciente: months puede venir en cualquier orden, así que ordeno
-      // lexicográficamente — el formato YY-MM con padding hace que funcione.
       const sortedMonths = [...indexData.months].sort();
       currentMonth = sortedMonths.at(-1) || getCurrentMonthString();
     }
@@ -48,24 +60,33 @@ async function init() {
 
     initUpload({
       legendPeopleMap,
-      onUpload: async (formData) => {
-        await handleUpload(formData);
-        // Refresh: reload index, legend, and re-render current month
-        indexData = await loadIndex();
-        legendData = await loadLegend();
-        legendPeopleMap = legendData?.people || {};
-        renderLegend();
-        // Navigate to the month of the uploaded video
+      onUpload: async (formData, onProgress) => {
+        await handleUpload(formData, onProgress);
+        await reloadDataAndLegend();
         const uploadYY = formData.date.slice(2, 4);
         const uploadMM = formData.date.slice(5, 7);
-        const uploadMonth = `${uploadYY}-${uploadMM}`;
-        navigateToMonth(uploadMonth);
+        navigateToMonth(`${uploadYY}-${uploadMM}`);
+      }
+    });
+
+    initVideoOverlay();
+    initPasswordOverlay();
+    initAuthOverlay();
+
+    initPeoplePanel({
+      legendPeopleMap,
+      onMutate: () => doRenderLegend(),
+    });
+
+    initEditOverlay({
+      legendPeopleMap,
+      onSaved: async () => {
+        await reloadDataAndLegend();
+        await loadAndRenderMonth(currentMonth);
       }
     });
 
     await loadAndRenderMonth(currentMonth);
-    initVideoOverlay();
-    initPasswordOverlay();
 
   } catch (error) {
     console.error('Error initializing app:', error);
@@ -73,13 +94,23 @@ async function init() {
   }
 }
 
+async function reloadDataAndLegend() {
+  indexData = await loadIndex();
+  legendData = await loadLegend();
+  legendPeopleMap = legendData?.people || {};
+  updatePanelLegend(legendPeopleMap);
+  updateEditLegend(legendPeopleMap);
+  doRenderLegend();
+}
+
 async function loadAndRenderMonth(monthStr) {
   try {
-    renderMonthTimeline(monthStr);
     const dayData = await loadDayData(monthStr);
 
     if (!dayData || dayData.length === 0) {
+      currentItems = [];
       showEmpty();
+      doRenderLegend();
       return;
     }
 
@@ -91,7 +122,22 @@ async function loadAndRenderMonth(monthStr) {
       allItems = allItems.filter(item => item.date === currentDay);
     }
 
-    renderCanvas(allItems);
+    currentItems = allItems;
+
+    renderCanvas(allItems, {
+      legendPeopleMap,
+      onItemClick: (item) => openVideo(item, {
+        onEdit: openEditOverlay,
+        onDelete: (it, token) => deleteVideo(it, token, {
+          onDone: async () => {
+            await reloadDataAndLegend();
+            await loadAndRenderMonth(currentMonth);
+          }
+        }),
+      }),
+    });
+
+    doRenderLegend();
 
   } catch (error) {
     console.error('Error loading month:', error);
@@ -99,279 +145,11 @@ async function loadAndRenderMonth(monthStr) {
   }
 }
 
-function renderMonthTimeline(monthStr) {
-  const el = document.getElementById('timeline');
-  if (!el || !indexData) return;
-
-  renderTimeline({
-    el,
-    yyMM: monthStr,
-    selectedDay: currentDay,
-    indexDays: indexData.days || [],
-    legendPeopleMap,
-    onSelectDay: (d) => navigateToDay(d),
-  });
-}
-
-function renderCanvas(items) {
-  const canvas = document.getElementById('canvas');
-  const emptyEl = document.getElementById('empty');
-
-  if (!canvas) return;
-
-  // Limpiar videos del canvas
-  while (canvas.firstChild) canvas.removeChild(canvas.firstChild);
-
-  if (items.length === 0) {
-    if (emptyEl) emptyEl.hidden = false;
-    return;
-  }
-
-  if (emptyEl) emptyEl.hidden = true;
-
-  const containerSize = {
-    width: canvas.clientWidth || window.innerWidth || document.documentElement.clientWidth || 360,
-    height: (window.innerHeight || 640) * 0.94
-  };
-
-  const videoSize = calculateAverageVideoSize(items, containerSize);
-  const positions = generateRandomLayout(items.length, containerSize, videoSize);
-  const canvasHeight = calculateCanvasHeight(positions, containerSize.height);
-  canvas.style.minHeight = `${canvasHeight}px`;
-
-  items.forEach((item, index) => {
-    const pos = positions[index];
-    const videoEl = createVideoElement(item, pos);
-    canvas.appendChild(videoEl);
-  });
-}
-
-function createVideoElement(item, position) {
-  // Usa gradiente para fusion de colores
-  const gradient = resolveFusionGradient(item.person, legendPeopleMap);
-
-  const div = document.createElement('div');
-  div.className = 'video-item';
-  div.style.left = `${position.x}px`;
-  div.style.top = `${position.y}px`;
-  div.style.width = `${position.width}px`;
-  div.style.height = `${position.height}px`;
-  div.style.setProperty('--video-color', gradient);
-  div.dataset.itemId = item.id;
-
-  const video = document.createElement('video');
-  video.src = item.src;
-  if (item.thumb) video.poster = item.thumb;
-  video.muted = true;
-  video.loop = true;
-  video.playsInline = true;
-  video.preload = item.thumb ? 'none' : 'metadata';
-
-  video.addEventListener('loadedmetadata', () => {
-    const isVertical = video.videoHeight > video.videoWidth;
-    const aspectRatio = video.videoWidth / video.videoHeight;
-
-    if (isVertical) {
-      div.style.height = `${position.width / aspectRatio}px`;
-    } else {
-      div.style.width = `${position.height * aspectRatio}px`;
-    }
-  });
-
-  // If poster exists, infer aspect ratio from image to avoid loading video
-  if (item.thumb) {
-    const img = new Image();
-    img.onload = () => {
-      const ar = img.naturalWidth / img.naturalHeight;
-      if (img.naturalHeight > img.naturalWidth) {
-        div.style.height = `${position.width / ar}px`;
-      } else {
-        div.style.width = `${position.height * ar}px`;
-      }
-    };
-    img.src = item.thumb;
-  }
-
-  div.addEventListener('click', () => {
-    // Soporta formato nuevo (hasPassword) y legacy (password)
-    if (item.hasPassword || item.password) {
-      showPasswordPrompt(item);
-    } else {
-      showVideoFullscreen(item);
-    }
-  });
-
-  div.appendChild(video);
-  return div;
-}
-
-async function sha256hex(str) {
-  const data = new TextEncoder().encode(str);
-  const hash = await crypto.subtle.digest('SHA-256', data);
-  return [...new Uint8Array(hash)].map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-function withAccessHash(url, hash) {
-  if (!hash) return url;
-  const sep = url.includes('?') ? '&' : '?';
-  return `${url}${sep}p=${hash}`;
-}
-
-function showVideoFullscreen(item, accessHash = null) {
-  const overlay = document.getElementById('videoOverlay');
-  const body = document.getElementById('videoOverlayBody');
-
-  if (!overlay || !body) return;
-
-  body.innerHTML = '';
-
-  const video = document.createElement('video');
-  video.src = withAccessHash(item.src, accessHash);
-  video.controls = true;
-  video.autoplay = true;
-  video.playsInline = true;
-  if (item.thumb) video.poster = withAccessHash(item.thumb, accessHash);
-
-  body.appendChild(video);
-
-  if (item.title || item.notes) {
-    const meta = document.createElement('div');
-    meta.className = 'video-overlay-meta';
-    if (item.title && item.title !== 'sin titulo') {
-      const t = document.createElement('div');
-      t.className = 'video-overlay-title';
-      t.textContent = item.title;
-      meta.appendChild(t);
-    }
-    if (item.notes) {
-      const n = document.createElement('div');
-      n.className = 'video-overlay-notes';
-      n.textContent = item.notes;
-      meta.appendChild(n);
-    }
-    body.appendChild(meta);
-  }
-
-  // Botón borrar: visible solo si hay token de subida (señal de que el usuario
-  // tiene permisos). El Worker re-valida vía auth_token al ejecutar.
-  const authToken = localStorage.getItem('arwuchivo_auth_token');
-  if (authToken && item.id && item.date) {
-    const delBtn = document.createElement('button');
-    delBtn.type = 'button';
-    delBtn.className = 'video-overlay-delete';
-    delBtn.textContent = 'borrar';
-    delBtn.addEventListener('click', () => deleteVideo(item, authToken));
-    body.appendChild(delBtn);
-  }
-
-  overlay.hidden = false;
-}
-
-async function deleteVideo(item, authToken) {
-  if (!confirm(`¿borrar "${item.title || 'este video'}"? esto no se puede deshacer.`)) return;
-  try {
-    const body = new FormData();
-    body.append('id', item.id);
-    body.append('dayKey', item.date);
-    body.append('auth_token', authToken);
-    const res = await fetch('/api/delete', { method: 'POST', body });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'error' }));
-      if (res.status === 401) localStorage.removeItem('arwuchivo_auth_token');
-      alert('no se pudo borrar: ' + (err.error || res.status));
-      return;
-    }
-    // Recargar datos y vista
-    document.getElementById('videoOverlay').hidden = true;
-    indexData = await loadIndex();
-    renderLegend();
-    await loadAndRenderMonth(currentMonth);
-  } catch (e) {
-    alert('error de red al borrar');
-  }
-}
-
-function initVideoOverlay() {
-  const overlay = document.getElementById('videoOverlay');
-  const closeBtn = document.getElementById('videoOverlayClose');
-
-  if (!overlay || !closeBtn) return;
-
-  const close = () => {
-    overlay.hidden = true;
-    const video = overlay.querySelector('video');
-    if (video) video.pause();
-  };
-
-  closeBtn.addEventListener('click', close);
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) close();
-  });
-
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !overlay.hidden) close();
-  });
-}
-
-function showPasswordPrompt(item) {
-  const overlay = document.getElementById('passwordOverlay');
-  const input = document.getElementById('passwordInput');
-  const submitBtn = document.getElementById('passwordSubmit');
-  const cancelBtn = document.getElementById('passwordCancel');
-  const errorEl = document.getElementById('passwordError');
-
-  if (!overlay || !input || !submitBtn) return;
-
-  overlay.hidden = false;
-  input.value = '';
-  input.focus();
-  errorEl.hidden = true;
-
-  const handleSubmit = async () => {
-    // Legacy: si el item tenía password en plano (uploads viejos), el Worker
-    // ya no gatea el archivo. Aceptamos el match local como fallback.
-    if (item.password && input.value === item.password) {
-      overlay.hidden = true;
-      showVideoFullscreen(item);
-      return;
-    }
-
-    // Nuevo: hasheamos el input y pedimos al Worker que valide.
-    const hash = await sha256hex(input.value);
-    try {
-      const res = await fetch(withAccessHash(item.src, hash), { method: 'HEAD' });
-      if (res.ok) {
-        overlay.hidden = true;
-        showVideoFullscreen(item, hash);
-      } else {
-        errorEl.textContent = 'password incorrecto';
-        errorEl.hidden = false;
-      }
-    } catch {
-      errorEl.textContent = 'error al verificar';
-      errorEl.hidden = false;
-    }
-  };
-
-  submitBtn.addEventListener('click', handleSubmit, { once: true });
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') handleSubmit();
-  }, { once: true });
-  cancelBtn.addEventListener('click', () => {
-    overlay.hidden = true;
-  }, { once: true });
-}
-
-function initPasswordOverlay() {
-  const overlay = document.getElementById('passwordOverlay');
-  const closeBtn = document.getElementById('passwordOverlayClose');
-
-  if (!overlay || !closeBtn) return;
-
-  closeBtn.addEventListener('click', () => { overlay.hidden = true; });
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) overlay.hidden = true;
-  });
+function doRenderLegend() {
+  let items = currentItems;
+  // Si no hay nada cargado aún pero queremos mostrar todas las personas como
+  // hint, dejamos que renderLegend caiga al fallback de "todas en leyenda".
+  renderLegend({ items, legendPeopleMap });
 }
 
 function navigateToMonth(monthStr) {
@@ -384,36 +162,13 @@ function navigateToMonth(monthStr) {
   url.searchParams.delete('d');
   window.history.pushState({}, '', url);
 
-  renderLegend();
   loadAndRenderMonth(monthStr);
-}
-
-function navigateToDay(dayStr) {
-  // Toggle: clicking the selected day clears the filter
-  if (currentDay === dayStr) {
-    currentDay = null;
-    const url = new URL(window.location);
-    url.searchParams.delete('d');
-    url.searchParams.set('m', currentMonth);
-    window.history.pushState({}, '', url);
-  } else {
-    currentDay = dayStr;
-    currentMonth = dayStr.slice(0, 5);
-    const url = new URL(window.location);
-    url.searchParams.set('d', dayStr);
-    url.searchParams.delete('m');
-    window.history.pushState({}, '', url);
-  }
-  renderLegend();
-  loadAndRenderMonth(currentMonth);
 }
 
 function showEmpty() {
   const canvas = document.getElementById('canvas');
   const emptyEl = document.getElementById('empty');
-
   if (!canvas) return;
-
   while (canvas.firstChild) canvas.removeChild(canvas.firstChild);
   if (emptyEl) emptyEl.hidden = false;
 }
@@ -422,7 +177,6 @@ function showError(message) {
   const canvas = document.getElementById('canvas');
   const emptyEl = document.getElementById('empty');
   if (!canvas) return;
-
   while (canvas.firstChild) canvas.removeChild(canvas.firstChild);
   if (emptyEl) {
     emptyEl.textContent = message;
@@ -437,44 +191,6 @@ function getCurrentMonthString() {
   return `${yy}-${mm}`;
 }
 
-function renderLegend() {
-  const legendEl = document.getElementById('legend');
-  if (!legendEl || !legendPeopleMap) return;
-
-  // Solo gente que aparece en el mes/día visible. Si no hay nada cargado,
-  // muestro toda la leyenda (fallback al estado inicial).
-  let people;
-  if (currentMonth && indexData?.days) {
-    const daysInScope = currentDay
-      ? indexData.days.filter(d => d.d === currentDay)
-      : indexData.days.filter(d => d.d.startsWith(currentMonth));
-    const set = new Set();
-    for (const d of daysInScope) {
-      (d.people || []).forEach(p => set.add(p));
-    }
-    people = [...set];
-  } else {
-    people = Object.keys(legendPeopleMap);
-  }
-
-  if (people.length === 0) {
-    legendEl.innerHTML = '';
-    return;
-  }
-
-  const html = people.map(name => {
-    const { color } = resolvePersonColor(name, legendPeopleMap);
-    return `
-      <div class="legend-item">
-        <span class="legend-dot" style="background: ${color}"></span>
-        <span class="legend-name">${name.toLowerCase()}</span>
-      </div>
-    `;
-  }).join('');
-
-  legendEl.innerHTML = html;
-}
-
 init().then(() => {
-  renderLegend();
+  doRenderLegend();
 });

@@ -12,54 +12,89 @@
  * @returns {Array} Array de posiciones { x, y, width, height }
  */
 export function generateRandomLayout(count, containerSize, videoSize) {
-  const positions = [];
-  const padding = 0; // Sin padding, permitir solapamiento
-  const maxAttempts = 10; // Menos intentos, posicionamiento más libre
+  const padding = 8;
 
-  // Tamaños aleatorios para cada video (variación ±30% para más diversidad)
+  // Escala según cantidad: pocos items → más grandes para ocupar presencia.
+  const scale =
+    count <= 2 ? 3.2 :
+    count <= 4 ? 2.2 :
+    count <= 6 ? 1.6 :
+    count <= 9 ? 1.2 :
+    1.0;
+
   const sizes = Array.from({ length: count }, () => ({
-    width: videoSize.width * (0.7 + Math.random() * 0.6),
-    height: videoSize.height * (0.7 + Math.random() * 0.6)
+    width:  videoSize.width  * scale * (0.85 + Math.random() * 0.3),
+    height: videoSize.height * scale * (0.85 + Math.random() * 0.3),
   }));
 
+  // Tamaño base de la región: estimamos área necesaria para no apilarse.
+  const totalArea = sizes.reduce((sum, s) => sum + s.width * s.height, 0);
+  const targetArea = totalArea / 0.4;
+  let layoutHeight = Math.max(
+    containerSize.height,
+    Math.ceil(targetArea / containerSize.width)
+  );
+
+  const useTight = count <= 6;
+  let regionTop = useTight ? containerSize.height * 0.10 : 0;
+  let regionBottom = useTight ? containerSize.height * 0.85 : layoutHeight;
+
+  // Caps de seguridad por video
+  for (const size of sizes) {
+    if (size.width > containerSize.width * 0.95) {
+      const ratio = size.height / size.width;
+      size.width = containerSize.width * 0.95;
+      size.height = size.width * ratio;
+    }
+  }
+
+  const positions = [];
+
+  // Intentamos colocar evitando solape. Si tras varias rondas no cabe, en vez
+  // de plantar el video encima de otro, AMPLIAMOS la región hacia abajo y
+  // reintentamos. Solo si tras crecimientos sigue sin haber hueco caemos al
+  // fallback (caso extremo, prácticamente imposible).
   for (let i = 0; i < count; i++) {
     const size = sizes[i];
     let placed = false;
-    let attempts = 0;
 
-    while (!placed && attempts < maxAttempts) {
-      attempts++;
-
-      // Posición aleatoria dentro del canvas
-      const x = Math.random() * (containerSize.width - size.width);
-      const y = Math.random() * (containerSize.height - size.height);
-
-      const newRect = {
-        x,
-        y,
-        width: size.width,
-        height: size.height
-      };
-
-      // Verificar que no se solape con videos ya colocados
-      const overlaps = positions.some(rect => 
-        rectanglesOverlap(rect, newRect, padding)
-      );
-
-      if (!overlaps) {
-        positions.push(newRect);
-        placed = true;
+    let growIterations = 0;
+    while (!placed && growIterations < 6) {
+      const attempts = 40;
+      for (let a = 0; a < attempts; a++) {
+        const x = Math.random() * Math.max(0, containerSize.width - size.width);
+        const yMin = regionTop;
+        const yMax = Math.max(yMin + 1, regionBottom - size.height);
+        const y = yMin + Math.random() * (yMax - yMin);
+        const newRect = { x, y, width: size.width, height: size.height };
+        const overlaps = positions.some(rect => rectanglesOverlap(rect, newRect, padding));
+        if (!overlaps) {
+          positions.push(newRect);
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) {
+        // Crecer la región y darle otra oportunidad
+        regionBottom += containerSize.height * 0.5;
+        layoutHeight = Math.max(layoutHeight, regionBottom);
+        growIterations++;
       }
     }
 
-    // Si no se pudo colocar, forzar posición (mejor solapado que invisible)
     if (!placed) {
+      // Fallback final: al fondo de la región, sin solape garantizado pero
+      // empujado abajo para que al menos no se monte sobre los primeros.
+      const lastBottom = positions.length
+        ? Math.max(...positions.map(p => p.y + p.height))
+        : regionTop;
       positions.push({
-        x: Math.random() * (containerSize.width - size.width),
-        y: Math.random() * (containerSize.height - size.height),
+        x: Math.random() * Math.max(0, containerSize.width - size.width),
+        y: lastBottom + padding,
         width: size.width,
-        height: size.height
+        height: size.height,
       });
+      regionBottom = Math.max(regionBottom, lastBottom + size.height + padding * 2);
     }
   }
 
@@ -119,12 +154,11 @@ export function calculateAverageVideoSize(items, containerSize) {
 }
 
 /**
- * Calcula la altura del canvas (sin scroll, altura fija)
- * @param {Array} positions - Array de posiciones { x, y, width, height }
- * @param {number} viewportHeight - Altura del viewport
- * @returns {number}
+ * Calcula la altura del canvas. Si los videos caben en el viewport,
+ * devuelve la altura del viewport. Si no, crece para acomodarlos.
  */
 export function calculateCanvasHeight(positions, viewportHeight) {
-  // Sin scroll: altura fija igual al viewport
-  return viewportHeight;
+  if (!positions || positions.length === 0) return viewportHeight;
+  const maxBottom = Math.max(...positions.map(p => p.y + p.height));
+  return Math.max(viewportHeight, Math.ceil(maxBottom) + 16);
 }

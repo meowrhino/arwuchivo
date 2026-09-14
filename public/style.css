@@ -42,53 +42,39 @@ body {
 }
 
 /* ============================================
-   HEADER
+   ACTION STACK (esquina inferior derecha)
    ============================================ */
 
-.header {
+.action-stack {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: var(--header-h);
+  bottom: 1rem;
+  right: 1rem;
+  z-index: 50;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg);
-  z-index: 100;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  text-align: right;
 }
 
 .date-btn {
   appearance: none;
   border: none;
-  background: transparent;
-  color: var(--text);
-  font-size: 13px;
+  background: none;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 14px;
   font-weight: 400;
-  padding: 6px 12px;
+  padding: 2px 0;
   cursor: pointer;
   text-transform: lowercase;
-  letter-spacing: 0.06em;
-  font-family: inherit;
-  position: relative;
-  transition: color 0.2s var(--ease-out), transform 0.2s var(--ease-out);
-}
-.date-btn::after {
-  content: '';
-  position: absolute;
-  bottom: 2px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 0;
-  height: 1.5px;
-  background: var(--accent);
-  transition: width 0.25s var(--ease-out);
+  letter-spacing: 0.04em;
+  transition: color 0.15s var(--ease-out),
+              font-weight 0.15s var(--ease-out);
 }
 .date-btn:hover {
-  color: var(--accent);
-}
-.date-btn:hover::after {
-  width: calc(100% - 24px);
+  color: var(--text);
+  font-weight: 600;
 }
 
 /* ============================================
@@ -98,58 +84,9 @@ body {
 .canvas {
   position: relative;
   width: 100%;
-  margin-top: calc(var(--header-h) + var(--timeline-h));
-  min-height: calc(100dvh - var(--header-h) - var(--timeline-h));
+  margin-top: 0;
+  min-height: 100dvh;
   overflow: visible;
-}
-
-.timeline {
-  position: fixed;
-  top: var(--header-h);
-  left: 0;
-  right: 0;
-  height: var(--timeline-h);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 0 12px;
-  background: var(--bg);
-  z-index: 99;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.timeline::-webkit-scrollbar { display: none; }
-
-.day-dot {
-  appearance: none;
-  border: none;
-  padding: 0;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #e8e8e8;
-  cursor: default;
-  flex: 0 0 auto;
-  transition: transform 0.2s var(--ease-out), background 0.2s var(--ease-out);
-}
-.day-dot.is-active {
-  cursor: pointer;
-}
-.day-dot.is-active:hover {
-  transform: scale(1.6);
-}
-.day-dot.is-selected {
-  width: 10px;
-  height: 10px;
-  outline: 1.5px solid var(--accent);
-  outline-offset: 3px;
-  animation: dot-pulse 2s ease-in-out infinite;
-}
-
-@keyframes dot-pulse {
-  0%, 100% { outline-color: var(--accent); }
-  50%      { outline-color: var(--accent-soft); }
 }
 
 .empty {
@@ -217,43 +154,53 @@ body {
    ============================================ */
 
 .legend {
-  position: fixed;
-  bottom: 14px;
-  right: 14px;
-  font-size: 10px;
+  appearance: none;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 13px;
   color: var(--text-muted);
-  z-index: 50;
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  letter-spacing: 0.08em;
+  align-items: flex-end;
+  gap: 4px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  padding: 6px 0;
+  transition: color 0.15s var(--ease-out);
 }
-
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  transition: color 0.2s var(--ease-out);
-}
-.legend-item:hover {
+.legend:hover {
   color: var(--text);
 }
 
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-direction: row-reverse;  /* dot a la derecha, nombre a la izquierda */
+}
+
 .legend-dot {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   flex-shrink: 0;
-  transition: transform 0.2s var(--ease-out);
-}
-.legend-item:hover .legend-dot {
-  transform: scale(1.4);
 }
 
 .legend-name {
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+}
+
+.legend-count {
+  font-size: 11px;
+  opacity: 0.55;
+  margin-right: 4px;
+}
+
+.legend-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
 }
 
 /* ============================================
@@ -261,37 +208,23 @@ body {
    ============================================ */
 
 .upload-btn {
-  position: fixed;
-  bottom: 12px;
-  left: 12px;
-  width: var(--upload-btn-size);
-  height: var(--upload-btn-size);
-  border-radius: 50%;
-  border: 0.5px solid var(--text-muted);
-  background: var(--bg);
-  color: var(--text);
-  font-size: 20px;
+  appearance: none;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 13px;
   font-weight: 300;
   line-height: 1;
+  padding: 2px 0;
   cursor: pointer;
-  transition: transform 0.25s var(--ease-out),
-              border-color 0.25s var(--ease-out),
-              color 0.25s var(--ease-out),
-              box-shadow 0.25s var(--ease-out);
-  z-index: 50;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  letter-spacing: 0.04em;
+  transition: color 0.15s var(--ease-out),
+              font-weight 0.15s var(--ease-out);
 }
-
 .upload-btn:hover {
-  transform: scale(1.08) rotate(90deg);
-  border-color: var(--accent);
-  color: var(--accent);
-  box-shadow: var(--shadow-soft);
-}
-.upload-btn:active {
-  transform: scale(0.96) rotate(90deg);
+  color: var(--text);
+  font-weight: 500;
 }
 
 /* ============================================
@@ -1248,4 +1181,267 @@ body {
   .preset-buttons {
     gap: 8px;
   }
+}
+
+/* ============================================
+   WIZARD DE SUBIDA
+   ============================================ */
+
+.wizard-header {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.wizard-progress {
+  display: flex;
+  gap: 6px;
+}
+
+.wizard-step-dot {
+  width: 24px;
+  height: 4px;
+  border-radius: 2px;
+  background: #e8e8e8;
+  transition: background 0.25s var(--ease-out);
+}
+.wizard-step-dot.is-active {
+  background: var(--accent);
+}
+
+.wizard-step {
+  display: none;
+  animation: wizard-fade 0.25s var(--ease-out);
+}
+.wizard-step.is-active {
+  display: block;
+}
+
+@keyframes wizard-fade {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.wizard-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-top: 24px;
+  padding-top: 14px;
+}
+
+.wizard-actions button {
+  appearance: none;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 300;
+  letter-spacing: 0.04em;
+  padding: 4px 0;
+  cursor: pointer;
+  transition: color 0.15s var(--ease-out),
+              font-weight 0.15s var(--ease-out),
+              opacity 0.15s var(--ease-out);
+}
+.wizard-actions button:hover:not(:disabled) {
+  color: var(--text);
+  font-weight: 500;
+}
+.wizard-actions button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+.wizard-actions button.primary {
+  color: var(--text);
+  font-weight: 500;
+}
+.wizard-actions button.primary:hover:not(:disabled) {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+#wizardBack {
+  margin-right: auto;
+}
+
+.wizard-summary {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 0.5px solid var(--border);
+  border-radius: 6px;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 12px;
+}
+.summary-row span {
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+}
+.summary-row strong {
+  font-weight: 400;
+  text-align: right;
+  word-break: break-word;
+}
+
+.form-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+/* ============================================
+   PANEL DE PERSONAS
+   ============================================ */
+
+.people-panel {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 250;
+  padding: 16px;
+}
+.people-panel[hidden] {
+  display: none;
+}
+
+.people-panel-inner {
+  width: min(380px, 100%);
+  max-height: 85dvh;
+  background: var(--bg);
+  border-radius: 6px;
+  padding: 24px;
+  overflow-y: auto;
+  position: relative;
+}
+
+.people-panel-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 18px;
+  cursor: pointer;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.people-panel-close:hover {
+  color: var(--text);
+}
+
+.people-panel-inner h3 {
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  margin-bottom: 20px;
+  text-transform: lowercase;
+}
+
+.people-panel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.people-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 4px;
+  border-bottom: 0.5px solid var(--border);
+}
+.people-row:last-child {
+  border-bottom: none;
+}
+
+.people-row-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.people-row-name {
+  flex: 1;
+  font-size: 13px;
+}
+
+.people-row-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.people-row-actions button {
+  appearance: none;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  padding: 4px 6px;
+  transition: color 0.2s var(--ease-out);
+}
+.people-row-actions button:hover {
+  color: var(--text);
+}
+.people-row-delete:hover {
+  color: #d00 !important;
+}
+
+/* ============================================
+   ACCIONES VIDEO OVERLAY (editar + borrar)
+   ============================================ */
+
+.video-overlay-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.video-overlay-edit,
+.video-overlay-delete {
+  appearance: none;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 300;
+  letter-spacing: 0.04em;
+  padding: 4px 0;
+  cursor: pointer;
+  transition: color 0.15s var(--ease-out), font-weight 0.15s var(--ease-out);
+}
+.video-overlay-edit:hover {
+  color: var(--text);
+  font-weight: 500;
+}
+.video-overlay-delete:hover {
+  color: #d00;
+  font-weight: 500;
 }

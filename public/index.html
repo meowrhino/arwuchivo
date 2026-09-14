@@ -4,22 +4,20 @@
   <script src="coi-serviceworker.js"></script>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <!-- No indexar: la página es accesible solo por link, no debe salir en buscadores. -->
+  <meta name="robots" content="noindex, nofollow" />
   <title>arwuchivo</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <header class="header">
-    <button id="dateBtn" class="date-btn" type="button" aria-label="cambiar mes"></button>
-  </header>
-
-  <nav id="timeline" class="timeline" aria-label="timeline del mes"></nav>
-
   <main class="canvas" id="canvas"></main>
   <div class="empty" id="empty" hidden>no hay videos aqui (todavia)</div>
 
-  <div class="legend" id="legend" aria-label="leyenda"></div>
-
-  <button id="uploadBtn" class="upload-btn" type="button" aria-label="subir video">+</button>
+  <div class="action-stack">
+    <button id="dateBtn" class="date-btn" type="button" aria-label="cambiar mes"></button>
+    <button id="legend" class="legend" type="button" aria-label="gestionar personas"></button>
+    <button id="uploadBtn" class="upload-btn" type="button" aria-label="subir video">subir</button>
+  </div>
 
   <div id="seasonMenu" class="season-menu" hidden>
     <div class="season-menu-inner">
@@ -34,7 +32,7 @@
     <div id="videoOverlayBody" class="video-overlay-body"></div>
   </div>
 
-  <!-- Modal de password -->
+  <!-- Modal de password (per-video) -->
   <div id="passwordOverlay" class="password-overlay" hidden>
     <div class="password-overlay-inner">
       <button id="passwordOverlayClose" class="password-overlay-close" type="button" aria-label="Cerrar">×</button>
@@ -50,49 +48,87 @@
     </div>
   </div>
 
-  <!-- Modal de subida -->
+  <!-- Modal de auth (upload password, persistido) -->
+  <div id="authOverlay" class="password-overlay" hidden>
+    <div class="password-overlay-inner">
+      <button id="authOverlayClose" class="password-overlay-close" type="button" aria-label="Cerrar">×</button>
+      <div class="password-form">
+        <label for="authInput">contraseña</label>
+        <input id="authInput" type="password" placeholder="..." autocomplete="current-password" />
+        <div class="password-actions">
+          <button id="authCancel" type="button">cancelar</button>
+          <button id="authSubmit" type="button" class="primary">desbloquear</button>
+        </div>
+        <div id="authError" class="password-error" hidden></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de subida (wizard) -->
   <div id="uploadOverlay" class="upload-overlay" hidden>
-    <div class="upload-overlay-inner">
+    <div class="upload-overlay-inner wizard">
       <button id="uploadOverlayClose" class="upload-overlay-close" type="button" aria-label="Cerrar">×</button>
-      <h2>subir video</h2>
+      <div class="wizard-header">
+        <div class="wizard-progress">
+          <span class="wizard-step-dot is-active" data-step="1"></span>
+          <span class="wizard-step-dot" data-step="2"></span>
+          <span class="wizard-step-dot" data-step="3"></span>
+          <span class="wizard-step-dot" data-step="4"></span>
+        </div>
+        <h2 id="wizardTitle">video</h2>
+      </div>
       <div id="capabilityWarning" class="capability-warning" hidden></div>
+
       <form id="uploadForm" class="upload-form">
-        <div class="form-field">
-          <label for="uploadVideo">video</label>
-          <input id="uploadVideo" type="file" accept="video/*" required />
-          <div id="uploadVideoError" class="upload-error" hidden></div>
-          <div id="compressionStatus"></div>
-        </div>
+        <!-- Step 1: video -->
+        <section class="wizard-step is-active" data-step="1">
+          <div class="form-field">
+            <label for="uploadVideo">elige un archivo</label>
+            <input id="uploadVideo" type="file" accept="video/*" />
+            <div id="uploadVideoError" class="upload-error" hidden></div>
+            <div id="compressionStatus"></div>
+          </div>
+        </section>
 
-<div class="form-field">
-          <label for="uploadTitle">título</label>
-          <input id="uploadTitle" type="text" placeholder="ej: bloqueo + contra" />
-        </div>
+        <!-- Step 2: datos -->
+        <section class="wizard-step" data-step="2">
+          <div class="form-field">
+            <label for="uploadTitle">título</label>
+            <input id="uploadTitle" type="text" placeholder="ej: bloqueo + contra" />
+          </div>
+          <div class="form-field">
+            <label for="uploadNotes">notas</label>
+            <textarea id="uploadNotes" rows="3" placeholder="qué practicasteis, qué corregir..."></textarea>
+          </div>
+          <div class="form-field">
+            <label for="uploadDate">fecha</label>
+            <input id="uploadDate" type="date" required />
+          </div>
+        </section>
 
-        <div class="form-field">
-          <label for="uploadNotes">notas (opcional)</label>
-          <textarea id="uploadNotes" rows="3" placeholder="qué practicasteis, qué corregir..."></textarea>
-        </div>
+        <!-- Step 3: personas -->
+        <section class="wizard-step" data-step="3">
+          <div class="form-field">
+            <label>¿quién sale?</label>
+            <div id="uploadPeople" class="upload-people"></div>
+            <button id="addPersonBtn" type="button" class="add-person-btn">+ añadir persona</button>
+          </div>
+        </section>
 
-        <div class="form-field">
-          <label for="uploadDate">fecha</label>
-          <input id="uploadDate" type="date" required />
-        </div>
+        <!-- Step 4: privacidad + confirmar -->
+        <section class="wizard-step" data-step="4">
+          <div class="form-field">
+            <label for="uploadPassword">password (opcional)</label>
+            <input id="uploadPassword" type="text" placeholder="dejar vacío si es público" />
+            <small class="form-hint">si lo pones, hará falta esa palabra para ver el video.</small>
+          </div>
+          <div id="wizardSummary" class="wizard-summary"></div>
+        </section>
 
-        <div class="form-field">
-          <label>persona(s)</label>
-          <div id="uploadPeople" class="upload-people"></div>
-          <button id="addPersonBtn" type="button" class="add-person-btn">+ añadir persona</button>
-        </div>
-
-        <div class="form-field">
-          <label for="uploadPassword">password (opcional)</label>
-          <input id="uploadPassword" type="text" placeholder="dejar vacío si es público" />
-        </div>
-
-        <div class="form-actions">
-          <button type="button" id="uploadCancel">cancelar</button>
-          <button type="submit" class="primary">subir</button>
+        <div class="wizard-actions">
+          <button type="button" id="wizardBack" hidden>atrás</button>
+          <button type="button" id="wizardNext" class="primary">siguiente</button>
+          <button type="submit" id="wizardSubmit" class="primary" hidden>subir</button>
         </div>
       </form>
     </div>
@@ -102,7 +138,7 @@
   <div id="newPersonOverlay" class="new-person-overlay" hidden>
     <div class="new-person-overlay-inner">
       <button id="newPersonOverlayClose" class="new-person-overlay-close" type="button" aria-label="Cerrar">×</button>
-      <h3>nueva persona</h3>
+      <h3 id="newPersonTitle">nueva persona</h3>
       <form id="newPersonForm" class="new-person-form">
         <div class="form-field">
           <label for="newPersonName">nombre</label>
@@ -117,6 +153,48 @@
 
         <div class="form-actions">
           <button type="button" id="newPersonCancel">cancelar</button>
+          <button type="submit" class="primary">guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Panel de gestión de personas (se abre al hacer click en la leyenda) -->
+  <div id="peoplePanel" class="people-panel" hidden>
+    <div class="people-panel-inner">
+      <button id="peoplePanelClose" class="people-panel-close" type="button" aria-label="Cerrar">×</button>
+      <h3>personas</h3>
+      <div id="peoplePanelList" class="people-panel-list"></div>
+      <button id="peoplePanelAdd" type="button" class="add-person-btn">+ añadir persona</button>
+    </div>
+  </div>
+
+  <!-- Modal de edición de video -->
+  <div id="editOverlay" class="upload-overlay" hidden>
+    <div class="upload-overlay-inner">
+      <button id="editOverlayClose" class="upload-overlay-close" type="button" aria-label="Cerrar">×</button>
+      <h2>editar video</h2>
+      <form id="editForm" class="upload-form">
+        <div class="form-field">
+          <label for="editTitle">título</label>
+          <input id="editTitle" type="text" />
+        </div>
+        <div class="form-field">
+          <label for="editNotes">notas</label>
+          <textarea id="editNotes" rows="3"></textarea>
+        </div>
+        <div class="form-field">
+          <label>personas</label>
+          <div id="editPeople" class="upload-people"></div>
+          <button id="editAddPersonBtn" type="button" class="add-person-btn">+ añadir persona</button>
+        </div>
+        <div class="form-field">
+          <label for="editPassword">password (vacío = público)</label>
+          <input id="editPassword" type="text" placeholder="dejar vacío para quitar" />
+          <small class="form-hint">si ya tenía password, escribe uno nuevo o déjalo vacío para hacerlo público.</small>
+        </div>
+        <div class="form-actions">
+          <button type="button" id="editCancel">cancelar</button>
           <button type="submit" class="primary">guardar</button>
         </div>
       </form>
