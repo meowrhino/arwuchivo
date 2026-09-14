@@ -14,7 +14,9 @@
  * Nunca se cachean redirecciones (p.ej. 302 → /login) ni respuestas de error.
  */
 
-const VERSION = 'v1';
+// v2: la estructura de modulos cambio (color/, upload/, views/), asi que hay
+// que tirar la shell cacheada de la version anterior en vez de mezclarlas.
+const VERSION = 'v2';
 const SHELL_CACHE = `arwuchivo-shell-${VERSION}`;
 const DATA_CACHE = 'arwuchivo-data';
 const RUNTIME_CACHE = 'arwuchivo-runtime';
